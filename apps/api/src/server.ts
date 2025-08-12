@@ -23,6 +23,9 @@ export const createServer = async (): Promise<Express> => {
 
   // CORS: allow localhost dev ports and any subdomain under BASE_DOMAIN
   const baseDomain = (process.env.BASE_DOMAIN || "localhost").toLowerCase();
+  const frontendDomain = (
+    process.env.FRONTEND_DOMAIN || "localhost"
+  ).toLowerCase();
   const devOrigins = [
     "http://localhost:3000",
     "http://localhost:3001",
@@ -36,7 +39,8 @@ export const createServer = async (): Promise<Express> => {
       const allowed =
         devOrigins.includes(origin) ||
         host === baseDomain ||
-        host.endsWith(`.${baseDomain}`);
+        host.endsWith(`.${baseDomain}`) ||
+        host.endsWith(`.${frontendDomain}`);
       return callback(null, allowed);
     } catch {
       return callback(null, false);

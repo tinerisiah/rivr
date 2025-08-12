@@ -142,3 +142,15 @@ export function sendToDriver(
     if (ws.readyState === WebSocket.OPEN) ws.send(str);
   });
 }
+
+// Basic WebSocket health/metrics for health checks
+export function getWebSocketMetrics() {
+  return {
+    isRunning: !!wsServer,
+    totalClients: wsServer ? wsServer.clients.size : 0,
+    byTenant: Array.from(tenantRooms.entries()).map(([tenantId, set]) => ({
+      tenantId,
+      clients: set.size,
+    })),
+  };
+}

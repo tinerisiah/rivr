@@ -3,6 +3,9 @@ import { log } from "@repo/logger";
 import { authenticateToken } from "../auth";
 import { requirePermission, requireTenantMatch } from "../auth/rbac";
 import { getStorage } from "../storage";
+import { db } from "../db";
+import { businesses } from "@repo/schema";
+import { getWebSocketMetrics } from "./websocket-routes";
 
 type CacheEntry = { data: unknown; expiresAt: number };
 const cache = new Map<string, CacheEntry>();
@@ -185,6 +188,134 @@ export function registerAnalyticsRoutes(app: Express) {
           error: error instanceof Error ? error.message : String(error),
         });
         res.status(500).json({ error: "Failed to compute analytics" });
+      }
+    }
+  );
+
+  // Platform health endpoint
+  app.get(
+    "/api/admin/health",
+    authenticateToken,
+    requirePermission("admin:read"),
+    async (req, res) => {
+      try {
+        const startedAt = Date.now();
+        // DB check (simple select 1 and count businesses)
+        let dbOk = false;
+        let dbLatencyMs = 0;
+        let businessCount = 0;
+        try {
+          const t0 = Date.now();
+          const all = await db.select({ id: businesses.id }).from(businesses);
+          dbLatencyMs = Date.now() - t0;
+          dbOk = true;
+          businessCount = all.length;
+        } catch (e) {
+          dbOk = false;
+        }
+
+        // Auth health: presence of user from token
+        const authOk = !!req.user;
+
+        // WebSocket metrics
+        const ws = getWebSocketMetrics();
+
+        // Basic email check stub (no provider wired here)
+        const emailOk = true;
+
+        const payload = {
+          ok: dbOk && authOk,
+          checks: {
+            db: { ok: dbOk, latencyMs: dbLatencyMs, businessCount },
+            auth: { ok: authOk },
+            websocket: ws,
+            email: { ok: emailOk },
+          },
+          generatedAt: Date.now(),
+          latencyMs: Date.now() - startedAt,
+        };
+        res.json(payload);
+      } catch (error) {
+        log("error", "Platform health failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({ ok: false, error: "Health check failed" });
+      }
+    }
+  );
+
+  // Tenant health endpoint
+  app.get(
+    "/api/admin/health/tenant/:id",
+    authenticateToken,
+    requirePermission("admin:read"),
+    async (req, res) => {
+      try {
+        const businessId = parseInt(req.params.id);
+        if (Number.isNaN(businessId)) {
+          return res
+            .status(400)
+            .json({ ok: false, error: "Invalid businessId" });
+        }
+        const startedAt = Date.now();
+        const storage = getStorage(req as any);
+        // Create a storage bound to this tenant using its schema
+        const baseStorage = getStorage(req);
+        const base = await baseStorage.getBusiness(businessId);
+        if (!base)
+          return res
+            .status(404)
+            .json({ ok: false, error: "Business not found" });
+
+        const tenantStorage = new (storage as any).constructor({
+          tenant: base.databaseSchema,
+          businessId,
+        });
+
+        // Run a few queries to validate tenant data access
+        let customersOk = false;
+        let driversOk = false;
+        let requestsOk = false;
+        let timings: Record<string, number> = {};
+        try {
+          const t0 = Date.now();
+          await tenantStorage.getCustomers();
+          timings.customersMs = Date.now() - t0;
+          customersOk = true;
+        } catch {}
+        try {
+          const t0 = Date.now();
+          await tenantStorage.getDrivers();
+          timings.driversMs = Date.now() - t0;
+          driversOk = true;
+        } catch {}
+        try {
+          const t0 = Date.now();
+          await tenantStorage.getPickupRequests();
+          timings.requestsMs = Date.now() - t0;
+          requestsOk = true;
+        } catch {}
+
+        const ok = customersOk && driversOk && requestsOk;
+        res.json({
+          ok,
+          businessId,
+          tenant: base.databaseSchema,
+          checks: {
+            customers: {
+              ok: customersOk,
+              latencyMs: timings.customersMs ?? null,
+            },
+            drivers: { ok: driversOk, latencyMs: timings.driversMs ?? null },
+            requests: { ok: requestsOk, latencyMs: timings.requestsMs ?? null },
+          },
+          latencyMs: Date.now() - startedAt,
+        });
+      } catch (error) {
+        log("error", "Tenant health failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({ ok: false, error: "Tenant health failed" });
       }
     }
   );
