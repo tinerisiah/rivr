@@ -234,7 +234,7 @@ export function ProductionTab({
       {/* Five Column Production Workflow */}
       <div className="grid grid-cols-1 xl:grid-cols-5 lg:grid-cols-3 md:grid-cols-2 gap-4 mb-6">
         {/* Column 1: Requests for Pickup */}
-        <Card className="bg-red-50 border border-red-200 p-4 shadow-sm">
+        <Card className="bg-card border border-border p-4 shadow-sm">
           <h3 className="text-lg font-bold text-red-700 mb-4 text-center">
             Requests for Pickup
           </h3>
@@ -256,7 +256,7 @@ export function ProductionTab({
               .map((request: PickupRequest) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-3 border border-red-200 hover:bg-red-50 transition-colors shadow-sm"
+                  className="bg-card rounded-lg p-3 border border-border hover:bg-muted transition-colors shadow-sm"
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start">
@@ -294,7 +294,7 @@ export function ProductionTab({
         </Card>
 
         {/* Column 2: In Process */}
-        <Card className="bg-yellow-50 border border-yellow-200 p-4 shadow-sm">
+        <Card className="bg-card border border-border p-4 shadow-sm">
           <h3 className="text-lg font-bold text-yellow-700 mb-4 text-center">
             In Process
           </h3>
@@ -314,7 +314,7 @@ export function ProductionTab({
               .map((request: PickupRequest) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-3 border border-yellow-200 hover:bg-yellow-50 transition-colors shadow-sm"
+                  className="bg-card rounded-lg p-3 border border-border hover:bg-muted transition-colors shadow-sm"
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start">
@@ -355,7 +355,7 @@ export function ProductionTab({
         </Card>
 
         {/* Column 3: Ready to Deliver */}
-        <Card className="bg-orange-50 border border-orange-200 p-4 shadow-sm">
+        <Card className="bg-card border border-border p-4 shadow-sm">
           <h3 className="text-lg font-bold text-orange-700 mb-4 text-center">
             Ready to Deliver
           </h3>
@@ -375,7 +375,7 @@ export function ProductionTab({
               .map((request: PickupRequest) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-3 border border-orange-200 hover:bg-orange-50 transition-colors shadow-sm"
+                  className="bg-card rounded-lg p-3 border border-border hover:bg-muted transition-colors shadow-sm"
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start">
@@ -413,7 +413,7 @@ export function ProductionTab({
         </Card>
 
         {/* Column 4: Ready to Bill */}
-        <Card className="bg-blue-50 border border-blue-200 p-4 shadow-sm">
+        <Card className="bg-card border border-border p-4 shadow-sm">
           <h3 className="text-lg font-bold text-blue-700 mb-4 text-center">
             Ready to Bill
           </h3>
@@ -433,7 +433,7 @@ export function ProductionTab({
               .map((request: PickupRequest) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-3 border border-blue-200 hover:bg-blue-50 transition-colors shadow-sm"
+                  className="bg-card rounded-lg p-3 border border-border hover:bg-muted transition-colors shadow-sm"
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start">
@@ -471,7 +471,7 @@ export function ProductionTab({
         </Card>
 
         {/* Column 5: Billed/Completed */}
-        <Card className="bg-green-50 border border-green-200 p-4 shadow-sm">
+        <Card className="bg-card border border-border p-4 shadow-sm">
           <h3 className="text-lg font-bold text-green-700 mb-4 text-center">
             Billed/Completed
           </h3>
@@ -491,7 +491,7 @@ export function ProductionTab({
               .map((request: PickupRequest) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-3 border border-green-200 shadow-sm"
+                  className="bg-card rounded-lg p-3 border border-border shadow-sm"
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start">

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { authenticatedApiRequest, apiRequest } from "@/lib/api";
+import { authenticatedApiRequest } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -17,11 +17,10 @@ import {
   Clock,
   Copy,
   DollarSign,
-  FileText,
+  Loader2,
   Mail,
   MessageSquare,
   Package,
-  PieChart,
   Search,
   Settings,
   Target,
@@ -33,6 +32,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Header } from "./ui";
+import { ExecutiveRevenueReport } from "./rivr-exec/reports/ExecutiveRevenueReport";
+import { CustomersReport } from "./rivr-exec/reports/CustomersReport";
+import { DriverPerformanceReport } from "./rivr-exec/reports/DriverPerformanceReport";
 import { BusinessesTab } from "./admin/businesses-tab";
 import { BusinessForm } from "./admin/business-form";
 import AnalyticsDashboard from "./rivr-exec/analytics/AnalyticsDashboard";
@@ -116,17 +118,20 @@ export function RivrExecPortal() {
       businessId: number;
       status: string;
     }) => {
-      const response = await apiRequest(
+      const data = await authenticatedApiRequest(
         `/api/admin/businesses/${businessId}/status`,
         {
           method: "PUT",
           body: JSON.stringify({ status }),
         }
       );
-      return response.json();
+      return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/businesses"],
+        refetchType: "active",
+      });
       toast({
         title: "Business Status Updated",
         description: "Business status updated successfully",
@@ -144,14 +149,17 @@ export function RivrExecPortal() {
 
   const createBusinessMutation = useMutation({
     mutationFn: async (businessData: any) => {
-      const response = await apiRequest("/api/admin/businesses", {
+      const data = await authenticatedApiRequest("/api/admin/businesses", {
         method: "POST",
         body: JSON.stringify(businessData),
       });
-      return response.json();
+      return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/businesses"],
+        refetchType: "active",
+      });
       toast({
         title: "Business Created",
         description: "Business account created successfully",
@@ -215,7 +223,10 @@ export function RivrExecPortal() {
     }
   };
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const handleRefreshOverview = async () => {
+    setRefreshing(true);
     try {
       const keys = [
         "/api/admin/customers",
@@ -226,7 +237,12 @@ export function RivrExecPortal() {
         "/api/admin/businesses",
       ];
       await Promise.all(
-        keys.map((key) => queryClient.invalidateQueries({ queryKey: [key] }))
+        keys.map((key) =>
+          queryClient.invalidateQueries({
+            queryKey: [key],
+            refetchType: "active",
+          })
+        )
       );
       toast({
         title: "Overview Refreshed",
@@ -239,6 +255,8 @@ export function RivrExecPortal() {
         description: "Please try again",
         variant: "destructive",
       });
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -249,6 +267,15 @@ export function RivrExecPortal() {
     } catch (error) {
       console.error("Copy failed:", error);
     }
+  };
+
+  const formatProductionStatus = (status?: string) => {
+    if (!status) return "pending";
+    const statusMap: Record<string, string> = {
+      ready_for_delivery: "ready for delivery",
+      in_process: "in process",
+    };
+    return statusMap[status] ?? status.replaceAll("_", " ");
   };
 
   // Business management functions
@@ -338,15 +365,13 @@ export function RivrExecPortal() {
               onClick={handleRefreshOverview}
               className="shadow-sm"
             >
-              <RefreshCcw className="w-4 h-4" />
+              {refreshing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCcw className="w-4 h-4" />
+              )}
               <span>Refresh</span>
             </Button>
-            <Link href="/rivr-exec/settings">
-              <Button variant="outline" size="sm" className="shadow-sm">
-                <Settings className="w-4 h-4" />
-                <span>Settings</span>
-              </Button>
-            </Link>
           </div>
 
           {/* Main Content Tabs */}
@@ -780,7 +805,7 @@ export function RivrExecPortal() {
                             {request.firstName} {request.lastName}
                           </span>
                           <Badge className="bg-blue-100 text-blue-800">
-                            {request.productionStatus || "pending"}
+                            {formatProductionStatus(request.productionStatus)}
                           </Badge>
                         </div>
                       ))}
@@ -791,53 +816,28 @@ export function RivrExecPortal() {
             </TabsContent>
 
             <TabsContent value="reports" className="space-y-6 mt-6">
-              <div className="flex justify-end">
-                <Link href="/rivr-exec/reports">
-                  <Button variant="outline" size="sm">
-                    Open Reports Page
-                  </Button>
-                </Link>
-              </div>
-              <Card className=" border border-border p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-foreground mb-4">
-                  Executive Reports
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Button
-                    variant="outline"
-                    className="p-4 h-auto flex flex-col items-center gap-2"
-                  >
-                    <FileText className="w-8 h-8 text-blue-500" />
-                    <span className="text-sm font-medium">Revenue Report</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="p-4 h-auto flex flex-col items-center gap-2"
-                  >
-                    <Users className="w-8 h-8 text-green-500" />
-                    <span className="text-sm font-medium">
-                      Customer Analysis
-                    </span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="p-4 h-auto flex flex-col items-center gap-2"
-                  >
-                    <Activity className="w-8 h-8 text-orange-500" />
-                    <span className="text-sm font-medium">
-                      Operations Report
-                    </span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="p-4 h-auto flex flex-col items-center gap-2"
-                  >
-                    <PieChart className="w-8 h-8 text-purple-500" />
-                    <span className="text-sm font-medium">
-                      Performance Metrics
-                    </span>
-                  </Button>
+              <Card className="border border-border p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-bold">Executive Reports</h3>
                 </div>
+                <Tabs className="w-full" defaultValue="revenue">
+                  <TabsList className="grid grid-cols-2 md:grid-cols-3 gap-2 bg-background border border-border">
+                    <TabsTrigger value="revenue">Revenue</TabsTrigger>
+                    <TabsTrigger value="customers">Customers</TabsTrigger>
+                    <TabsTrigger value="drivers">
+                      Driver Performance
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="revenue" className="mt-4">
+                    <ExecutiveRevenueReport />
+                  </TabsContent>
+                  <TabsContent value="customers" className="mt-4">
+                    <CustomersReport />
+                  </TabsContent>
+                  <TabsContent value="drivers" className="mt-4">
+                    <DriverPerformanceReport />
+                  </TabsContent>
+                </Tabs>
               </Card>
             </TabsContent>
           </Tabs>

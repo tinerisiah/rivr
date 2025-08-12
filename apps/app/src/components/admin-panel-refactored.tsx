@@ -1,15 +1,14 @@
 "use client";
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { buildApiUrl } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
-import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { AdminHeader } from "@/components/admin/admin-header";
+import { AdminTabs } from "@/components/admin/admin-tabs";
+import { BusinessForm } from "@/components/admin/business-form";
+import { CustomersTab } from "@/components/admin/customers-tab";
+import { DriversTab } from "@/components/admin/drivers-tab";
+import { OverviewTab } from "@/components/admin/overview-tab";
+import { ProductionTab } from "@/components/admin/production-tab";
+import { QuotesTab } from "@/components/admin/quotes-tab";
+import { SettingsTab } from "@/components/admin/settings-tab";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -26,68 +25,26 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RivrLogo } from "@/components/rivr-logo";
-import { ThemeToggle } from "@/components/theme-toggle";
-import LogoUpload from "@/components/logo-upload";
 import WelcomeAnimation, {
   useWelcomeAnimation,
 } from "@/components/welcome-animation";
-import { AdminHeader } from "@/components/admin/admin-header";
-import { AdminTabs } from "@/components/admin/admin-tabs";
-import { OverviewTab } from "@/components/admin/overview-tab";
-import { CustomersTab } from "@/components/admin/customers-tab";
-import { DriversTab } from "@/components/admin/drivers-tab";
-import { ProductionTab } from "@/components/admin/production-tab";
-import { QuotesTab } from "@/components/admin/quotes-tab";
-import { SettingsTab } from "@/components/admin/settings-tab";
-import { BusinessesTab } from "@/components/admin/businesses-tab";
-import { BusinessForm } from "@/components/admin/business-form";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type {
   Customer,
+  Driver,
   PickupRequest,
   QuoteRequest,
-  Driver,
-  InsertDriver,
-  EmailTemplate,
-  InsertEmailTemplate,
-  Business,
 } from "@/lib/schema";
-import {
-  Users,
-  Settings,
-  Plus,
-  Copy,
-  CheckCircle,
-  Clock,
-  FileText,
-  ExternalLink,
-  Truck,
-  Reply,
-  ArrowRightLeft,
-  Search,
-  Edit,
-  Phone,
-  Mail,
-  MapPin,
-  Building2,
-  Calendar,
-  User,
-  Package,
-  MessageSquare,
-  AlertTriangle,
-  BarChart3,
-  TrendingUp,
-  Filter,
-  Eye,
-  CalendarDays,
-  Camera,
-  Send,
-  LogOut,
-} from "lucide-react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 // Form schemas
 const customerFormSchema = z.object({
@@ -320,10 +277,10 @@ export function AdminPanelRefactored({
     enabled: showEmailLogsModal,
   });
 
-  const { data: businessesData, isLoading: loadingBusinesses } = useQuery({
-    queryKey: ["/api/admin/businesses"],
-    enabled: isMainAuth,
-  });
+  // const { data: businessesData, isLoading: loadingBusinesses } = useQuery({
+  //   queryKey: ["/api/admin/businesses"],
+  //   enabled: isMainAuth,
+  // });
 
   // Mutations
   const createCustomerMutation = useMutation({
@@ -530,7 +487,6 @@ export function AdminPanelRefactored({
   const quoteRequests = (quoteRequestsData as any)?.requests || [];
   const routes = (routesData as any)?.routes || [];
   const drivers = (driversData as any)?.drivers || [];
-  const businesses = (businessesData as any)?.businesses || [];
 
   // Event handlers
   const handleLogout = async () => {
@@ -805,21 +761,6 @@ export function AdminPanelRefactored({
       ),
     },
     {
-      value: "businesses",
-      label: "Businesses",
-      hiddenOnMobile: true,
-      content: (
-        <BusinessesTab
-          businesses={businesses}
-          loadingBusinesses={loadingBusinesses}
-          onAddBusiness={handleAddBusiness}
-          onActivateBusiness={handleActivateBusiness}
-          onSuspendBusiness={handleSuspendBusiness}
-          onCancelBusiness={handleCancelBusiness}
-        />
-      ),
-    },
-    {
       value: "production",
       label: "Production",
       hiddenOnMobile: true,
@@ -868,7 +809,7 @@ export function AdminPanelRefactored({
   });
 
   return (
-    <div className="min-h-screen bg-background safe-area-top safe-area-bottom overscroll-none">
+    <div className="min-h-screen bg-background safe-area-top safe-area-bottom overscroll-none pb-4">
       <div className="max-w-6xl mx-auto mobile-padding">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -1428,6 +1369,130 @@ export function AdminPanelRefactored({
         onSubmit={handleBusinessSubmit}
         isLoading={createBusinessMutation.isPending}
       />
+
+      {/* Quote Details Modal */}
+      <Dialog
+        open={showQuoteDetails}
+        onOpenChange={(open) => {
+          setShowQuoteDetails(open);
+          if (!open) {
+            setSelectedQuoteForDetails(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto bg-popover border border-border shadow-sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-foreground mb-2">
+              Quote Details
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedQuoteForDetails && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-muted-foreground">Name</div>
+                  <div className="text-foreground font-medium">
+                    {selectedQuoteForDetails.firstName}{" "}
+                    {selectedQuoteForDetails.lastName}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Business</div>
+                  <div className="text-foreground font-medium">
+                    {selectedQuoteForDetails.businessName}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Email</div>
+                  <div className="text-foreground break-all">
+                    {selectedQuoteForDetails.email}
+                  </div>
+                </div>
+                {selectedQuoteForDetails.phone && (
+                  <div>
+                    <div className="text-muted-foreground">Phone</div>
+                    <div className="text-foreground">
+                      {selectedQuoteForDetails.phone}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <div className="text-muted-foreground">Requested</div>
+                  <div className="text-foreground">
+                    {new Date(
+                      selectedQuoteForDetails.createdAt
+                    ).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              {selectedQuoteForDetails.description && (
+                <div>
+                  <div className="text-muted-foreground mb-1">Description</div>
+                  <div className="text-foreground/90 whitespace-pre-wrap">
+                    {selectedQuoteForDetails.description}
+                  </div>
+                </div>
+              )}
+              {Array.isArray(selectedQuoteForDetails.photos) &&
+                selectedQuoteForDetails.photos.length > 0 && (
+                  <div>
+                    <div className="text-muted-foreground mb-2">Photos</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {selectedQuoteForDetails.photos.map(
+                        (url: string, idx: number) => {
+                          const isBase64Image =
+                            typeof url === "string" &&
+                            url.startsWith("data:image/");
+                          if (!isBase64Image) return null;
+                          return (
+                            <a
+                              key={`${url}-${idx}`}
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block rounded overflow-hidden border border-border"
+                              title={`Photo ${idx + 1}`}
+                            >
+                              <Image
+                                src={url}
+                                alt={`Photo ${idx + 1}`}
+                                width={200}
+                                height={96}
+                                className="w-full h-24 object-cover"
+                              />
+                            </a>
+                          );
+                        }
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => handleQuoteReply(selectedQuoteForDetails)}
+                >
+                  Reply
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowQuoteDetails(false);
+                    setSelectedQuoteForDetails(null);
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Welcome Animation */}
       {showWelcome && (

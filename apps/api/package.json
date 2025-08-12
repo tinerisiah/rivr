@@ -20,6 +20,7 @@
     "preset": "@repo/jest-presets/node"
   },
   "dependencies": {
+    "@faker-js/faker": "^9.0.0",
     "@neondatabase/serverless": "^0.10.4",
     "@repo/logger": "workspace:*",
     "@repo/schema": "workspace:*",

@@ -19,7 +19,7 @@ import {
 import { generateMfaSecretForUser, verifyMfaToken } from "./auth";
 import { log } from "@repo/logger";
 import { getStorage } from "./storage";
-import { provisionTenantSchema } from "./lib/tenant-db";
+import { provisionTenantSchema, withTenantDb } from "./lib/tenant-db";
 import { db } from "./db";
 import { refreshTokens, rivrAdmins, users, drivers } from "@repo/schema";
 import { eq } from "drizzle-orm";
@@ -511,13 +511,15 @@ export function registerAuthRoutes(app: Express) {
     try {
       const { email, password } = loginSchema.parse(req.body);
 
-      // Direct lookup avoids tenant transaction (neon-http does not support tx)
-      const driverRows = await db
-        .select()
-        .from(drivers)
-        .where(eq(drivers.email, email))
-        .limit(1);
-      const driver = driverRows[0];
+      // Look up driver within the resolved tenant context (schema search_path)
+      const driver = await withTenantDb(req, async (tx) => {
+        const rows = await tx
+          .select()
+          .from(drivers)
+          .where(eq(drivers.email, email))
+          .limit(1);
+        return rows[0];
+      });
 
       if (!driver) {
         return res.status(401).json({

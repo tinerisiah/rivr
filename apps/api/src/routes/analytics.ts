@@ -104,17 +104,19 @@ export function registerAnalyticsRoutes(app: Express) {
     requirePermission("admin:read"),
     async (req, res) => {
       try {
+        const refresh = String(req.query.refresh || "").toLowerCase() === "1";
         const cacheKey = `platform_sum`;
-        const cached = getCache(cacheKey);
+        const cached = refresh ? null : getCache(cacheKey);
         if (cached) return res.json(cached);
 
+        // Fetch businesses from shared schema directly to avoid tenant search_path concerns
+        const bizList = await db.select().from(businesses);
         const storage = getStorage(req);
-        const businesses = await storage.getBusinesses();
 
         // Compute per-business summaries (shallow sample metrics)
-        const perBusiness = await Promise.all(
-          businesses.map(async (b: any) => {
-            // Create a storage bound to this tenant's schema for analytics
+        const perBusiness = [] as any[];
+        for (const b of bizList as any[]) {
+          try {
             const tenantStorage = new (storage as any).constructor({
               tenant: b.databaseSchema,
               businessId: b.id,
@@ -147,7 +149,7 @@ export function registerAnalyticsRoutes(app: Express) {
                       60000
                   );
 
-            return {
+            perBusiness.push({
               businessId: b.id,
               businessName: b.businessName,
               status: b.status,
@@ -161,17 +163,33 @@ export function registerAnalyticsRoutes(app: Express) {
               },
               activeDrivers: drivers.filter((d: any) => d.isActive).length,
               averageCompletionMinutes: avgMinutes,
-            };
-          })
-        );
+            });
+          } catch (e) {
+            // Fallback: include business with zeroed metrics so UI is not empty
+            log("warn", "Including business with zero metrics in summary", {
+              businessId: (b as any).id,
+              error: e instanceof Error ? e.message : String(e),
+            });
+            perBusiness.push({
+              businessId: b.id,
+              businessName: b.businessName,
+              status: b.status,
+              subscriptionStatus: b.subscriptionStatus,
+              monthlyRevenue: b.monthlyRevenue || 0,
+              revenueTotal: 0,
+              totals: { totalPickups: 0, completedPickups: 0, billed: 0 },
+              activeDrivers: 0,
+              averageCompletionMinutes: 0,
+            });
+          }
+        }
 
         const summary = {
           businesses: perBusiness,
           totals: {
-            businesses: businesses.length,
-            activeBusinesses: businesses.filter(
-              (b: any) => b.status === "active"
-            ).length,
+            businesses: bizList.length,
+            activeBusinesses: bizList.filter((b: any) => b.status === "active")
+              .length,
             totalMonthlyRevenue: perBusiness.reduce(
               (sum, b) => sum + (b.monthlyRevenue || 0),
               0
@@ -356,15 +374,26 @@ export function registerAnalyticsRoutes(app: Express) {
           ) {
             continue;
           }
-          const tenantStorage = new (storage as any).constructor({
-            tenant: b.databaseSchema,
-            businessId: b.id,
-          });
-          const [drivers, routes, pickups] = await Promise.all([
-            tenantStorage.getDrivers(),
-            tenantStorage.getRoutes(),
-            tenantStorage.getPickupRequests(),
-          ]);
+          let drivers: any[] = [];
+          let routes: any[] = [];
+          let pickups: any[] = [];
+          try {
+            const tenantStorage = new (storage as any).constructor({
+              tenant: b.databaseSchema,
+              businessId: b.id,
+            });
+            [drivers, routes, pickups] = await Promise.all([
+              tenantStorage.getDrivers(),
+              tenantStorage.getRoutes(),
+              tenantStorage.getPickupRequests(),
+            ]);
+          } catch (e) {
+            log("warn", "Skipping business in driver performance", {
+              businessId: (b as any).id,
+            });
+            // push zeroed entries per driver not possible; skip entirely here
+            continue;
+          }
 
           const inRangeRoute = (r: any) => {
             const t = Date.parse(r.createdAt || r.startTime || 0);
@@ -489,14 +518,24 @@ export function registerAnalyticsRoutes(app: Express) {
           ) {
             continue;
           }
-          const tenantStorage = new (storage as any).constructor({
-            tenant: b.databaseSchema,
-            businessId: b.id,
-          });
-          const [customers, pickups] = await Promise.all([
-            tenantStorage.getCustomers(),
-            tenantStorage.getPickupRequests(),
-          ]);
+          let customers: any[] = [];
+          let pickups: any[] = [];
+          try {
+            const tenantStorage = new (storage as any).constructor({
+              tenant: b.databaseSchema,
+              businessId: b.id,
+            });
+            [customers, pickups] = await Promise.all([
+              tenantStorage.getCustomers(),
+              tenantStorage.getPickupRequests(),
+            ]);
+          } catch (e) {
+            log("warn", "Skipping business in customers report", {
+              businessId: (b as any).id,
+            });
+            // Skip if tenant cannot be queried; customers require tenant data
+            continue;
+          }
 
           const inRangePickup = (p: any) => {
             const t = Date.parse(p.completedAt || p.createdAt || 0);

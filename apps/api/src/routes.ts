@@ -5,13 +5,15 @@ import {
   registerAdminRoutes,
   registerDriverRoutes,
   setupWebSocketServer,
-  broadcastToDrivers,
   registerAnalyticsRoutes,
 } from "./routes/index";
+import { broadcastToDrivers } from "./routes/websocket-routes";
 
 export function registerRoutes(app: Express): HttpServer {
   // Register all route modules
-  registerCustomerRoutes(app, broadcastToDrivers);
+  registerCustomerRoutes(app, (message: unknown) =>
+    broadcastToDrivers(undefined, message)
+  );
   registerAdminRoutes(app);
   registerDriverRoutes(app);
   registerAnalyticsRoutes(app);

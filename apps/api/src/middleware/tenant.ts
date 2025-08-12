@@ -3,6 +3,7 @@ import { db } from "../db";
 import { businesses } from "@repo/schema";
 import { eq, or } from "drizzle-orm";
 import { log } from "@repo/logger";
+import { provisionTenantSchema } from "../lib/tenant-db";
 
 function getHostWithoutPort(hostHeader: string | undefined): string | null {
   if (!hostHeader) return null;
@@ -36,12 +37,9 @@ export async function tenantMiddleware(
       "/api/auth/health",
       "/api/auth/admin/login", // Allow admin login without tenant resolution
       "/api/auth/profile",
+      "/api/public/businesses", // Allow public businesses listing without tenant resolution
     ]);
     if (publicPaths.has(req.path)) {
-      return next();
-    }
-
-    if (req.path.startsWith("/api/admin")) {
       return next();
     }
 
@@ -108,6 +106,16 @@ export async function tenantMiddleware(
       return res
         .status(404)
         .json({ success: false, message: "Unknown tenant" });
+    }
+
+    // Ensure tenant schema/tables exist and are up-to-date (idempotent)
+    try {
+      await provisionTenantSchema(business.databaseSchema);
+    } catch (e) {
+      log("warn", "Tenant schema ensure failed", {
+        error: e instanceof Error ? e.message : String(e),
+        schema: business.databaseSchema,
+      });
     }
 
     (req as any).tenant = business.databaseSchema;

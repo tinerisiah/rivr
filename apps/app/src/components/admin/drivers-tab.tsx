@@ -125,19 +125,6 @@ export function DriversTab({
                       <td className="py-4 px-4">
                         <div className="flex gap-2">
                           <Button
-                            onClick={() =>
-                              onCopyLink(
-                                `${window.location.origin}/driver?id=${driver.id}`
-                              )
-                            }
-                            variant="outline"
-                            size="sm"
-                            className="border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white text-xs"
-                          >
-                            <Copy className="w-3 h-3 mr-1" />
-                            Copy Link
-                          </Button>
-                          <Button
                             onClick={() => onEditDriver(driver)}
                             variant="outline"
                             size="sm"
@@ -164,7 +151,7 @@ export function DriversTab({
             </div>
           )}
 
-          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="mt-6 p-4 bg-card border border-border rounded-lg">
             <h5 className="font-medium text-blue-800 mb-2">
               Driver Dashboard Access Instructions:
             </h5>

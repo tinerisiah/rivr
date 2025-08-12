@@ -140,7 +140,7 @@ export function CustomersTab({
             return (
               <div
                 key={customer.id}
-                className="bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors shadow-sm"
+                className="bg-card rounded-lg border border-border hover:bg-muted transition-colors shadow-sm"
               >
                 {/* Customer Header */}
                 <div className="p-4">

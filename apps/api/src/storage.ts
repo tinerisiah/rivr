@@ -48,16 +48,29 @@ class Storage {
     this.tenantContext = tenantContext;
   }
   private async withDb<T>(fn: (dbc: typeof db) => Promise<T>): Promise<T> {
-    if (!this.tenantContext.tenant) {
-      if (process.env.ENFORCE_TENANT === "true") {
-        throw new Error("Tenant context required for this operation");
+    // If a tenant schema name is not known but a businessId is available,
+    // resolve the schema from the businesses table lazily.
+    if (!this.tenantContext.tenant && this.tenantContext.businessId) {
+      const [biz] = await db
+        .select({ databaseSchema: businesses.databaseSchema })
+        .from(businesses)
+        .where(eq(businesses.id, this.tenantContext.businessId))
+        .limit(1);
+      if (biz?.databaseSchema) {
+        this.tenantContext.tenant = biz.databaseSchema;
       }
+    }
+
+    // If no tenant context after attempted resolution, run against shared schema
+    if (!this.tenantContext.tenant) {
       return fn(db);
     }
-    // Neon HTTP driver doesn't support transactions or session state.
-    // Until a connection-oriented driver is used, fall back to shared schema.
-    // Note: This means tenant isolation via search_path isn't applied here.
-    return fn(db);
+
+    // Tenant-scoped: set search_path within a transaction for the lifetime of the callback
+    return db.transaction(async (tx) => {
+      await tx.execute(`SET LOCAL search_path TO ${this.tenantContext.tenant}`);
+      return fn(tx as unknown as typeof db);
+    });
   }
   // Customer operations
   async createCustomer(data: InsertCustomer): Promise<Customer> {
@@ -104,12 +117,14 @@ class Storage {
     id: number,
     updates: Partial<InsertCustomer>
   ): Promise<Customer | null> {
-    const [customer] = await db
-      .update(customers)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(customers.id, id))
-      .returning();
-    return customer || null;
+    return this.withDb(async (dbc) => {
+      const [customer] = await dbc
+        .update(customers)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(customers.id, id))
+        .returning();
+      return customer || null;
+    });
   }
 
   // Pickup request operations
@@ -294,6 +309,16 @@ class Storage {
     return this.withDb(async (dbc) =>
       dbc.select().from(quoteRequests).orderBy(desc(quoteRequests.createdAt))
     );
+  }
+
+  async getQuoteRequest(id: number): Promise<QuoteRequest | null> {
+    return this.withDb(async (dbc) => {
+      const [request] = await dbc
+        .select()
+        .from(quoteRequests)
+        .where(eq(quoteRequests.id, id));
+      return request || null;
+    });
   }
 
   // Driver operations

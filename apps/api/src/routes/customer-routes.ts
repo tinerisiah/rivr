@@ -3,11 +3,37 @@ import { z } from "zod";
 import { log } from "@repo/logger";
 import { getStorage } from "../storage";
 import { insertCustomerSchema, insertQuoteRequestSchema } from "@repo/schema";
+import { db } from "../db";
+import { businesses } from "@repo/schema";
+import { asc } from "drizzle-orm";
 
 export function registerCustomerRoutes(
   app: Express,
   broadcastToDrivers: (message: unknown) => void
 ) {
+  // Public endpoint to list businesses for selection (name + subdomain)
+  app.get("/api/public/businesses", async (_req, res) => {
+    try {
+      const rows = await db
+        .select({
+          id: businesses.id,
+          businessName: businesses.businessName,
+          subdomain: businesses.subdomain,
+          status: businesses.status,
+        })
+        .from(businesses)
+        .orderBy(asc(businesses.businessName));
+      // Return only active or trial businesses
+      const list = rows.filter(
+        (b) => b.status !== "canceled" && b.status !== "suspended"
+      );
+      res.json({ success: true, businesses: list });
+    } catch (error) {
+      res
+        .status(500)
+        .json({ success: false, message: "Failed to load businesses" });
+    }
+  });
   // Submit pickup request with customer token
   app.post("/api/pickup-request", async (req, res) => {
     try {

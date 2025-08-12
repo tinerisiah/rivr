@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
+import { faker } from "@faker-js/faker";
 
 dotenv.config();
 
@@ -16,6 +17,10 @@ const db = drizzle(sql);
 async function hashPassword(password: string): Promise<string> {
   const saltRounds = 12;
   return bcrypt.hash(password, saltRounds);
+}
+
+function esc(input: string): string {
+  return input.replace(/'/g, "''");
 }
 
 type Mode = "full" | "auth";
@@ -149,147 +154,191 @@ async function seedAuth(): Promise<void> {
 }
 
 async function seedFullExtras(): Promise<void> {
-  console.log("👥 Creating customers...");
-  const customersData = [
-    {
-      first_name: "John",
-      last_name: "Customer",
-      email: "john@customer.com",
-      phone: "(555) 777-8888",
-      business_name: "Customer Auto",
-      address: "321 Customer St, Customer City, CA 90213",
-      access_token: "customer_token_1",
-    },
-    {
-      first_name: "Alice",
-      last_name: "Client",
-      email: "alice@client.com",
-      phone: "(555) 999-0000",
-      business_name: "Client Motors",
-      address: "654 Client Ave, Client Town, CA 90214",
-      access_token: "customer_token_2",
-    },
-    {
-      first_name: "Bob",
-      last_name: "User",
-      email: "bob@user.com",
-      phone: "(555) 111-3333",
-      business_name: "User Garage",
-      address: "987 User Rd, User Village, CA 90215",
-      access_token: "customer_token_3",
-    },
-  ];
+  // Fetch businesses and seed each tenant schema with unique data
+  const bizRes: any = await db.execute(
+    `SELECT id, business_name, subdomain, database_schema FROM businesses`
+  );
+  const bizRows: Array<{
+    id: number;
+    business_name: string;
+    subdomain: string;
+    database_schema: string;
+  }> = bizRes.rows ?? bizRes;
 
-  const createdCustomers: Array<{ id: number } & Record<string, unknown>> = [];
-  for (const c of customersData) {
-    const result: any = await db.execute(
-      `INSERT INTO customers (first_name, last_name, email, phone, business_name, address, access_token)
-       VALUES ('${c.first_name}', '${c.last_name}', '${c.email}', '${c.phone}', '${c.business_name}', '${c.address}', '${c.access_token}') RETURNING id`
+  for (const b of bizRows) {
+    const schema = b.database_schema;
+    console.log(
+      `\n🏗️  Ensuring tenant schema '${schema}' for ${b.business_name}`
     );
-    const id = result[0]?.id || result.rows?.[0]?.id;
-    createdCustomers.push({ ...c, id });
-  }
-  console.log(`✅ Created ${createdCustomers.length} customers`);
-
-  console.log("📦 Creating pickup requests...");
-  const pickupRequestsData = [
-    {
-      customer_id: createdCustomers[0].id,
-      first_name: "John",
-      last_name: "Customer",
-      email: "john@customer.com",
-      phone: "(555) 777-8888",
-      business_name: "Customer Auto",
-      address: "321 Customer St, Customer City, CA 90213",
-      wheel_count: 4,
-      latitude: "34.0522",
-      longitude: "-118.2437",
-      production_status: "pending",
-      priority: "normal",
-      customer_notes: "Please pick up in the morning",
-    },
-    {
-      customer_id: createdCustomers[1].id,
-      first_name: "Alice",
-      last_name: "Client",
-      email: "alice@client.com",
-      phone: "(555) 999-0000",
-      business_name: "Client Motors",
-      address: "654 Client Ave, Client Town, CA 90214",
-      wheel_count: 2,
-      latitude: "34.0522",
-      longitude: "-118.2437",
-      production_status: "in_process",
-      priority: "high",
-      customer_notes: "Urgent pickup needed",
-    },
-  ];
-
-  const createdPickups: Array<{ id: number } & Record<string, unknown>> = [];
-  for (const p of pickupRequestsData) {
-    const result: any = await db.execute(
-      `INSERT INTO pickup_requests (customer_id, first_name, last_name, email, phone, business_name, address, wheel_count, latitude, longitude, production_status, priority, customer_notes)
-       VALUES (${p.customer_id}, '${p.first_name}', '${p.last_name}', '${p.email}', '${p.phone}', '${p.business_name}', '${p.address}', ${p.wheel_count}, '${p.latitude}', '${p.longitude}', '${p.production_status}', '${p.priority}', '${p.customer_notes}') RETURNING id`
-    );
-    const id = result[0]?.id || result.rows?.[0]?.id;
-    createdPickups.push({ ...p, id });
-  }
-  console.log(`✅ Created ${createdPickups.length} pickup requests`);
-
-  console.log("💬 Creating quote requests...");
-  const quoteRequestsData = [
-    {
-      first_name: "Tom",
-      last_name: "Quote",
-      email: "tom@quote.com",
-      phone: "(555) 444-5555",
-      business_name: "Quote Auto",
-      description: "Need quote for 10 wheels pickup service",
-      photos: ["photo1.jpg", "photo2.jpg"],
-    },
-  ];
-  for (const q of quoteRequestsData) {
-    await db.execute(
-      `INSERT INTO quote_requests (first_name, last_name, email, phone, business_name, description, photos)
-       VALUES ('${q.first_name}', '${q.last_name}', '${q.email}', '${q.phone}', '${q.business_name}', '${q.description}', ARRAY[${q.photos
-         .map((p) => `'${p}'`)
-         .join(", ")}])`
-    );
-  }
-  console.log("✅ Created quote requests");
-
-  console.log("🗺️  Creating routes + stops...");
-  const routesData = [
-    {
-      name: "Morning Route - Alex",
-      driver_email: "alex@rivr.com",
-      status: "active",
-      estimated_duration: 240,
-      total_distance: "45.5",
-    },
-  ];
-
-  for (const r of routesData) {
-    // Find driver id by email
-    const driverRow: any = await db.execute(
-      `SELECT id FROM drivers WHERE email='${r.driver_email}' LIMIT 1`
-    );
-    const driverId = driverRow[0]?.id || driverRow.rows?.[0]?.id;
-    if (!driverId) continue;
-    const routeRes: any = await db.execute(
-      `INSERT INTO routes (name, driver_id, status, estimated_duration, total_distance)
-       VALUES ('${r.name}', ${driverId}, '${r.status}', ${r.estimated_duration}, '${r.total_distance}') RETURNING id`
-    );
-    const routeId = routeRes[0]?.id || routeRes.rows?.[0]?.id;
-    // Add one stop if pickups exist
-    if (createdPickups.length > 0) {
-      await db.execute(
-        `INSERT INTO route_stops (route_id, stop_type, pickup_request_id, customer_id, address, business_name, contact_name, contact_phone, stop_order)
-         VALUES (${routeId}, 'pickup', ${createdPickups[0].id}, NULL, '${createdPickups[0].address}', '${createdPickups[0].business_name}', '${createdPickups[0].first_name} ${createdPickups[0].last_name}', '${createdPickups[0].phone}', 1)`
+    // Ensure schema + tables exist
+    await db.execute(`CREATE SCHEMA IF NOT EXISTS ${schema};`);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS ${schema}.customers (
+        id serial PRIMARY KEY,
+        first_name text NOT NULL,
+        last_name text NOT NULL,
+        email text NOT NULL,
+        phone text,
+        business_name text NOT NULL,
+        address text NOT NULL,
+        access_token text,
+        email_updates_enabled boolean DEFAULT false NOT NULL,
+        custom_signature text,
+        custom_logo text,
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL
       );
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS ${schema}.drivers (
+        id serial PRIMARY KEY,
+        name text NOT NULL,
+        email text,
+        phone text,
+        license_number text,
+        pin text,
+        password text,
+        status text DEFAULT 'available' NOT NULL,
+        is_active boolean DEFAULT true NOT NULL,
+        current_latitude text,
+        current_longitude text,
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS ${schema}.routes (
+        id serial PRIMARY KEY,
+        name text NOT NULL,
+        driver_id integer,
+        status text DEFAULT 'pending' NOT NULL,
+        total_distance text,
+        estimated_duration integer,
+        actual_duration integer,
+        start_time timestamp,
+        end_time timestamp,
+        optimized_waypoints text,
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS ${schema}.pickup_requests (
+        id serial PRIMARY KEY,
+        customer_id integer REFERENCES ${schema}.customers(id) NOT NULL,
+        first_name text NOT NULL,
+        last_name text NOT NULL,
+        email text NOT NULL,
+        phone text,
+        business_name text NOT NULL,
+        address text NOT NULL,
+        wheel_count integer DEFAULT 1 NOT NULL,
+        latitude text,
+        longitude text,
+        is_completed boolean DEFAULT false NOT NULL,
+        completed_at timestamp,
+        completion_photo text,
+        completion_location text,
+        completion_notes text,
+        employee_name text,
+        ro_number text,
+        customer_notes text,
+        wheel_qr_codes text[],
+        is_delivered boolean DEFAULT false NOT NULL,
+        delivered_at timestamp,
+        delivery_notes text,
+        delivery_qr_codes text[],
+        is_archived boolean DEFAULT false NOT NULL,
+        archived_at timestamp,
+        route_id integer,
+        route_order integer,
+        priority text DEFAULT 'normal',
+        estimated_pickup_time timestamp,
+        production_status text DEFAULT 'pending',
+        billed_at timestamp,
+        billed_amount text,
+        invoice_number text,
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+
+    console.log(`👥 Seeding customers for ${b.business_name}...`);
+    const customerIds: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      const first = faker.person.firstName();
+      const last = faker.person.lastName();
+      const email = faker.internet.email({
+        firstName: first,
+        lastName: last,
+        provider: "example.com",
+      });
+      const phone = faker.phone.number();
+      const address = faker.location.streetAddress({ useFullAddress: true });
+      const token = faker.string.uuid();
+      const result: any = await db.execute(`
+        INSERT INTO ${schema}.customers (first_name, last_name, email, phone, business_name, address, access_token)
+        VALUES ('${esc(first)}', '${esc(last)}', '${esc(email)}', '${esc(phone)}', '${esc(b.business_name)}', '${esc(address)}', '${esc(token)}')
+        RETURNING id;
+      `);
+      const id = result[0]?.id || result.rows?.[0]?.id;
+      if (id) customerIds.push(id);
     }
+    console.log(`✅ ${customerIds.length} customers created`);
+
+    console.log(`🚛 Seeding drivers for ${b.business_name}...`);
+    for (let i = 0; i < 10; i++) {
+      const name = faker.person.fullName();
+      const email = faker.internet.email({
+        firstName: name.split(" ")[0],
+        lastName: name.split(" ").slice(1).join(" ") || "driver",
+        provider: "example.com",
+      });
+      const phone = faker.phone.number();
+      await db.execute(`
+        INSERT INTO ${schema}.drivers (name, email, phone, is_active)
+        VALUES ('${esc(name)}', '${esc(email)}', '${esc(phone)}', true);
+      `);
+    }
+    console.log("✅ 10 drivers created");
+
+    console.log(`📦 Seeding pickup requests for ${b.business_name}...`);
+    const statuses = [
+      "pending",
+      "in_process",
+      "ready_for_delivery",
+      "ready_to_bill",
+      "billed",
+    ];
+    for (let i = 0; i < 20; i++) {
+      const cid = customerIds[Math.floor(Math.random() * customerIds.length)];
+      const first = faker.person.firstName();
+      const last = faker.person.lastName();
+      const email = faker.internet.email({
+        firstName: first,
+        lastName: last,
+        provider: "example.com",
+      });
+      const phone = faker.phone.number();
+      const address = faker.location.streetAddress({ useFullAddress: true });
+      const wheelCount = faker.number.int({ min: 1, max: 8 });
+      const status =
+        statuses[faker.number.int({ min: 0, max: statuses.length - 1 })];
+      const priority = faker.helpers.arrayElement([
+        "low",
+        "normal",
+        "high",
+        "urgent",
+      ]);
+      const notes = faker.lorem.sentence();
+      await db.execute(`
+        INSERT INTO ${schema}.pickup_requests (
+          customer_id, first_name, last_name, email, phone, business_name, address, wheel_count, latitude, longitude, production_status, priority, customer_notes
+        ) VALUES (
+          ${cid}, '${esc(first)}', '${esc(last)}', '${esc(email)}', '${esc(phone)}', '${esc(b.business_name)}', '${esc(address)}', ${wheelCount}, '34.0522', '-118.2437', '${esc(status)}', '${esc(priority)}', '${esc(notes)}'
+        );
+      `);
+    }
+    console.log("✅ 20 pickup requests created");
   }
-  console.log("✅ Created routes and stops");
 }
 
 async function main() {

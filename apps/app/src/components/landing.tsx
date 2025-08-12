@@ -10,6 +10,9 @@ import { Header } from "@/components/ui/header";
 import QuoteRequestModal from "./quote-request-modal";
 import UserFormModal from "./user-form-modal";
 import PickupWheel from "./pickup-wheel";
+import ServiceRequestModal from "./service-request-modal";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface QuoteInfo {
   firstName: string;
@@ -75,11 +78,13 @@ interface PickupRequest {
 
 export function Landing() {
   const router = useRouter();
+  const { toast } = useToast();
   const [userData, setUserData] = useState<UserInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [showUserForm, setShowUserForm] = useState(false);
-  const [myRequests, setMyRequests] = useState<PickupRequest[]>([]);
+  const [showServiceDetails, setShowServiceDetails] = useState(false);
+  const [myRequests] = useState<PickupRequest[]>([]);
 
   // Load saved user data
   useEffect(() => {
@@ -95,34 +100,101 @@ export function Landing() {
     }
   }, []);
 
-  const handleServiceClick = async () => {
-    if (!userData) {
-      // Show user form modal
-      setShowUserForm(true);
-      return;
-    }
-
+  const submitServiceRequest = async (details?: {
+    roNumber?: string;
+    notes?: string;
+    businessSubdomain?: string;
+  }) => {
+    if (!userData) return; // Guard; UI should ensure profile exists first
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      alert("Service request submitted successfully!");
-    } catch (error) {
-      alert("Failed to submit service request. Please try again.");
+      const existingToken =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("customer_token")
+          : null;
+
+      const payload = existingToken
+        ? {
+            token: existingToken,
+            roNumber: details?.roNumber ?? undefined,
+            customerNotes: details?.notes ?? undefined,
+          }
+        : {
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            email: userData.email,
+            phone: userData.phone,
+            businessName: userData.businessName,
+            address: userData.address,
+            roNumber: details?.roNumber ?? undefined,
+            customerNotes: details?.notes ?? undefined,
+          };
+
+      // If the user selected a business, ensure tenant header will be present
+      if (details?.businessSubdomain) {
+        try {
+          localStorage.setItem("tenant_subdomain", details.businessSubdomain);
+        } catch {}
+      }
+
+      const res = await apiRequest("POST", "/api/pickup-request", payload);
+      const json = (await res.json()) as {
+        success: boolean;
+        requestId?: number;
+        customerToken?: string;
+        message?: string;
+      };
+
+      if (json?.customerToken && typeof window !== "undefined") {
+        window.localStorage.setItem("customer_token", json.customerToken);
+      }
+
+      toast({
+        title: "Request Submitted",
+        description: json?.message || "Service request submitted successfully.",
+      });
+      setShowServiceDetails(false);
+    } catch {
+      toast({
+        title: "Request Failed",
+        description: "Failed to submit service request. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleServiceClick = () => {
+    if (!userData) {
+      setShowUserForm(true);
+      return;
+    }
+    setShowServiceDetails(true);
   };
 
   const handleQuoteRequest = () => {
     setShowQuoteForm(true);
   };
 
-  const handleQuoteSubmit = (data: QuoteInfo) => {
-    console.log("Quote request submitted:", data);
-    // Here you would typically send the data to your API
-    alert("Quote request submitted successfully! We'll get back to you soon.");
-    setShowQuoteForm(false);
+  const handleQuoteSubmit = async (data: QuoteInfo) => {
+    try {
+      const res = await apiRequest("POST", "/api/quote-request", data);
+      const json = (await res.json()) as { success: boolean; message?: string };
+      toast({
+        title: "Quote Request Sent",
+        description:
+          json?.message ||
+          "Quote request submitted successfully. We'll get back to you soon.",
+      });
+      setShowQuoteForm(false);
+    } catch {
+      toast({
+        title: "Quote Request Failed",
+        description: "Failed to submit quote request. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleFormSubmit = (data: UserInfo) => {
@@ -131,13 +203,8 @@ export function Landing() {
     localStorage.setItem("serviceRequestUserData", JSON.stringify(data));
     setUserData(data);
     setShowUserForm(false);
-
-    // Automatically proceed with service request
-    setIsLoading(true);
-    setTimeout(() => {
-      alert("Service request submitted successfully!");
-      setIsLoading(false);
-    }, 2000);
+    // Continue to details modal so user can add RO/Notes
+    setShowServiceDetails(true);
   };
 
   return (
@@ -477,6 +544,12 @@ export function Landing() {
         isOpen={showUserForm}
         onClose={() => setShowUserForm(false)}
         onSubmit={handleFormSubmit}
+      />
+
+      <ServiceRequestModal
+        isOpen={showServiceDetails}
+        onClose={() => setShowServiceDetails(false)}
+        onSubmit={(details) => submitServiceRequest(details)}
       />
     </div>
   );

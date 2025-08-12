@@ -191,93 +191,6 @@ export function DriverDashboard() {
     }
   }, [isMainAuth, user, toast]);
 
-  // WS: heartbeat and reconnect
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    let ws: WebSocket | null = null;
-    let heartbeat: number | null = null;
-    let reconnectTimer: number | null = null;
-
-    const connect = () => {
-      try {
-        const token = localStorage.getItem("accessToken");
-        if (!token) return;
-        const url = new URL(API_BASE_URL);
-        const wsScheme = url.protocol === "https:" ? "wss" : "ws";
-        const wsUrl = `${wsScheme}://${url.host}/ws?token=${encodeURIComponent(
-          token
-        )}`;
-        ws = new WebSocket(wsUrl);
-        ws.onopen = () => {
-          // start heartbeat
-          heartbeat = window.setInterval(() => {
-            try {
-              ws?.send(JSON.stringify({ type: "ping", t: Date.now() }));
-            } catch {}
-          }, 15000);
-        };
-        ws.onmessage = (ev) => {
-          try {
-            const msg = JSON.parse(ev.data);
-            if (msg?.type === "NEW_PICKUP_REQUEST") {
-              // Refresh available tasks list on new requests
-              refetch();
-              toast({
-                title: "New pickup assigned",
-                description: msg?.data?.businessName || "",
-              });
-            } else if (msg?.type === "DRIVER_MESSAGE" && msg?.data?.id) {
-              const message = msg.data as { id: number; message?: string };
-              // Mark delivered immediately
-              fetch(
-                buildApiUrl(`/api/driver/messages/${message.id}/delivered`),
-                {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                }
-              ).catch(() => {});
-
-              toast({
-                title: "New message",
-                description: message.message || "",
-              });
-
-              // Auto-mark as read after a short delay (acts as seen)
-              window.setTimeout(() => {
-                fetch(buildApiUrl(`/api/driver/messages/${message.id}/read`), {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                }).catch(() => {});
-              }, 3000);
-            }
-          } catch {}
-        };
-        ws.onclose = () => {
-          if (heartbeat) window.clearInterval(heartbeat);
-          heartbeat = null;
-          // attempt reconnect
-          reconnectTimer = window.setTimeout(connect, 3000) as any;
-        };
-        ws.onerror = () => {
-          try {
-            ws?.close();
-          } catch {}
-        };
-      } catch {}
-    };
-
-    connect();
-    return () => {
-      if (heartbeat) window.clearInterval(heartbeat);
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      try {
-        ws?.close();
-      } catch {}
-    };
-  }, [isAuthenticated, refetch, toast]);
-
   // PIN authentication removed
   const authMutation = useMutation({
     mutationFn: async (pin: string) => {
@@ -397,8 +310,98 @@ export function DriverDashboard() {
     enabled: !!driverId && isAuthenticated,
   });
 
+  // WS: heartbeat and reconnect
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let ws: WebSocket | null = null;
+    let heartbeat: number | null = null;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) return;
+        const url = new URL(API_BASE_URL);
+        const wsScheme = url.protocol === "https:" ? "wss" : "ws";
+        const wsUrl = `${wsScheme}://${url.host}/ws?token=${encodeURIComponent(
+          token
+        )}`;
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          // start heartbeat
+          heartbeat = window.setInterval(() => {
+            try {
+              ws?.send(JSON.stringify({ type: "ping", t: Date.now() }));
+            } catch {}
+          }, 15000);
+        };
+        ws.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg?.type === "NEW_PICKUP_REQUEST") {
+              // Refresh available tasks list on new requests
+              refetch();
+              toast({
+                title: "New pickup assigned",
+                description: msg?.data?.businessName || "",
+              });
+            } else if (msg?.type === "DRIVER_MESSAGE" && msg?.data?.id) {
+              const message = msg.data as { id: number; message?: string };
+              // Mark delivered immediately
+              fetch(
+                buildApiUrl(`/api/driver/messages/${message.id}/delivered`),
+                {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                }
+              ).catch(() => {});
+
+              toast({
+                title: "New message",
+                description: message.message || "",
+              });
+
+              // Auto-mark as read after a short delay (acts as seen)
+              window.setTimeout(() => {
+                fetch(buildApiUrl(`/api/driver/messages/${message.id}/read`), {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                }).catch(() => {});
+              }, 3000);
+            }
+          } catch {}
+        };
+        ws.onclose = () => {
+          if (heartbeat) window.clearInterval(heartbeat);
+          heartbeat = null;
+          // attempt reconnect
+          reconnectTimer = window.setTimeout(connect, 3000) as any;
+        };
+        ws.onerror = () => {
+          try {
+            ws?.close();
+          } catch {}
+        };
+      } catch {}
+    };
+
+    connect();
+    return () => {
+      if (heartbeat) window.clearInterval(heartbeat);
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      try {
+        ws?.close();
+      } catch {}
+    };
+  }, [isAuthenticated, refetch, toast]);
+
   // Forms for task completion
-  const pickupForm = useForm({
+  type PickupCompletionFormValues = z.infer<typeof pickupCompletionSchema>;
+  type DeliveryCompletionFormValues = z.infer<typeof deliveryCompletionSchema>;
+
+  const pickupForm = useForm<PickupCompletionFormValues>({
     resolver: zodResolver(pickupCompletionSchema),
     defaultValues: {
       roNumber: "",
@@ -408,10 +411,10 @@ export function DriverDashboard() {
     },
   });
 
-  const deliveryForm = useForm({
+  const deliveryForm = useForm<DeliveryCompletionFormValues>({
     resolver: zodResolver(deliveryCompletionSchema),
     defaultValues: {
-      photo: null,
+      photo: undefined,
       notes: "",
     },
   });
@@ -953,7 +956,7 @@ export function DriverDashboard() {
                           }}
                           variant="outline"
                           size="sm"
-                          className="text-red-600 hover:text-red-700 border-red-300 hover:border-red-500 dark:text-red-400 dark:border-red-700 dark:hover:text-red-300 dark:hover:border-red-600"
+                          className="text-red-600 hover:text-red-700 border-red-300 hover:border-red-500 dark:text-red-800 dark:border-red-700 dark:hover:text-white dark:hover:border-red-800"
                         >
                           Cancel
                         </Button>

@@ -39,7 +39,7 @@ export function AdminHeader({
           </p>
         </div>
       </div>
-      <div className="mobile-flex-row w-full sm:w-auto">
+      <div className="mobile-flex-row w-full sm:w-auto flex gap-2 items-center">
         <ThemeToggle />
         {showDriverLink && (
           <Link href="/driver">
@@ -55,7 +55,7 @@ export function AdminHeader({
         )}
         {showCustomerLink && (
           <Button
-            onClick={() => (window.location.href = "/customer")}
+            onClick={() => (window.location.href = "/")}
             variant="outline"
             className="border-cyan-500 text-cyan-400 hover:bg-cyan-500 hover:text-white mobile-button w-full sm:w-auto tap-highlight-none"
           >

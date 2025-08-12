@@ -12,6 +12,8 @@ import {
 } from "@repo/schema";
 import { authenticateToken } from "../auth";
 import { requirePermission, requireTenantMatch } from "../auth/rbac";
+import { db } from "../db";
+import { businesses } from "@repo/schema";
 
 export function registerAdminRoutes(app: Express) {
   // Customer management routes (tenant-scoped)
@@ -23,8 +25,32 @@ export function registerAdminRoutes(app: Express) {
     async (req, res) => {
       try {
         const storage = getStorage(req);
+        const isExec =
+          (req as any).tenant === "rivr_exec" ||
+          req.user?.role === "rivr_admin";
+
+        if (isExec) {
+          const bizList = await db.select().from(businesses);
+          const all: any[] = [];
+          for (const b of bizList as any[]) {
+            try {
+              const tenantStorage = new (storage as any).constructor({
+                tenant: b.databaseSchema,
+                businessId: b.id,
+              });
+              const list = await tenantStorage.getCustomers();
+              all.push(...list);
+            } catch (e) {
+              log("warn", "Skipping tenant while aggregating customers", {
+                businessId: (b as any).id,
+              });
+            }
+          }
+          return res.json({ success: true, customers: all });
+        }
+
         const customers = await storage.getCustomers();
-        res.json({ success: true, customers });
+        return res.json({ success: true, customers });
       } catch (error) {
         log("error", "Failed to fetch customers", {
           error: error instanceof Error ? error.message : String(error),
@@ -119,8 +145,32 @@ export function registerAdminRoutes(app: Express) {
     async (req, res) => {
       try {
         const storage = getStorage(req);
+        const isExec =
+          (req as any).tenant === "rivr_exec" ||
+          req.user?.role === "rivr_admin";
+
+        if (isExec) {
+          const bizList = await db.select().from(businesses);
+          const all: any[] = [];
+          for (const b of bizList as any[]) {
+            try {
+              const tenantStorage = new (storage as any).constructor({
+                tenant: b.databaseSchema,
+                businessId: b.id,
+              });
+              const list = await tenantStorage.getPickupRequests();
+              all.push(...list);
+            } catch (e) {
+              log("warn", "Skipping tenant while aggregating pickup requests", {
+                businessId: (b as any).id,
+              });
+            }
+          }
+          return res.json({ success: true, requests: all });
+        }
+
         const requests = await storage.getPickupRequests();
-        res.json({ success: true, requests });
+        return res.json({ success: true, requests });
       } catch (error) {
         log("error", "Failed to fetch pickup requests", {
           error: error instanceof Error ? error.message : String(error),
@@ -128,6 +178,61 @@ export function registerAdminRoutes(app: Express) {
         res.status(500).json({
           success: false,
           message: "Failed to fetch pickup requests",
+        });
+      }
+    }
+  );
+
+  app.put(
+    "/api/admin/pickup-requests/:id/production-status",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("pickup:write"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const pickupId = parseInt(req.params.id);
+        if (Number.isNaN(pickupId)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid pickup request id" });
+        }
+
+        const bodySchema = z.object({
+          productionStatus: z.string().min(1, "productionStatus is required"),
+        });
+        const { productionStatus } = bodySchema.parse(req.body);
+
+        const updated = await storage.updatePickupRequestProductionStatus(
+          pickupId,
+          productionStatus
+        );
+
+        if (!updated) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Pickup request not found" });
+        }
+
+        res.json({
+          success: true,
+          request: updated,
+          message: "Production status updated successfully",
+        });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid request body",
+            errors: error.errors,
+          });
+        }
+        log("error", "Failed to update production status", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({
+          success: false,
+          message: "Failed to update production status",
         });
       }
     }
@@ -141,8 +246,32 @@ export function registerAdminRoutes(app: Express) {
     async (req, res) => {
       try {
         const storage = getStorage(req);
+        const isExec =
+          (req as any).tenant === "rivr_exec" ||
+          req.user?.role === "rivr_admin";
+
+        if (isExec) {
+          const bizList = await db.select().from(businesses);
+          const all: any[] = [];
+          for (const b of bizList as any[]) {
+            try {
+              const tenantStorage = new (storage as any).constructor({
+                tenant: b.databaseSchema,
+                businessId: b.id,
+              });
+              const list = await tenantStorage.getQuoteRequests();
+              all.push(...list);
+            } catch (e) {
+              log("warn", "Skipping tenant while aggregating quote requests", {
+                businessId: (b as any).id,
+              });
+            }
+          }
+          return res.json({ success: true, requests: all });
+        }
+
         const requests = await storage.getQuoteRequests();
-        res.json({ success: true, requests });
+        return res.json({ success: true, requests });
       } catch (error) {
         log("error", "Failed to fetch quote requests", {
           error: error instanceof Error ? error.message : String(error),
@@ -151,6 +280,40 @@ export function registerAdminRoutes(app: Express) {
           success: false,
           message: "Failed to fetch quote requests",
         });
+      }
+    }
+  );
+
+  app.get(
+    "/api/admin/quote-reply/:id",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("pickup:read"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const id = parseInt(req.params.id);
+        if (Number.isNaN(id)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid quote id" });
+        }
+        const quote = await storage.getQuoteRequest(id);
+        if (!quote) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Quote request not found" });
+        }
+        const { createQuoteReplyEmail } = await import("../email-utils");
+        const emailLink = createQuoteReplyEmail(quote);
+        res.json({ success: true, emailLink });
+      } catch (error) {
+        log("error", "Failed to build quote reply link", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to build reply link" });
       }
     }
   );
@@ -203,8 +366,32 @@ export function registerAdminRoutes(app: Express) {
     async (req, res) => {
       try {
         const storage = getStorage(req);
+        const isExec =
+          (req as any).tenant === "rivr_exec" ||
+          req.user?.role === "rivr_admin";
+
+        if (isExec) {
+          const bizList = await db.select().from(businesses);
+          const all: any[] = [];
+          for (const b of bizList as any[]) {
+            try {
+              const tenantStorage = new (storage as any).constructor({
+                tenant: b.databaseSchema,
+                businessId: b.id,
+              });
+              const list = await tenantStorage.getDrivers();
+              all.push(...list);
+            } catch (e) {
+              log("warn", "Skipping tenant while aggregating drivers", {
+                businessId: (b as any).id,
+              });
+            }
+          }
+          return res.json({ success: true, drivers: all });
+        }
+
         const drivers = await storage.getDrivers();
-        res.json({ success: true, drivers });
+        return res.json({ success: true, drivers });
       } catch (error) {
         log("error", "Failed to fetch drivers", {
           error: error instanceof Error ? error.message : String(error),
@@ -561,8 +748,32 @@ export function registerAdminRoutes(app: Express) {
     async (req, res) => {
       try {
         const storage = getStorage(req);
+        const isExec =
+          (req as any).tenant === "rivr_exec" ||
+          req.user?.role === "rivr_admin";
+
+        if (isExec) {
+          const bizList = await db.select().from(businesses);
+          const all: any[] = [];
+          for (const b of bizList as any[]) {
+            try {
+              const tenantStorage = new (storage as any).constructor({
+                tenant: b.databaseSchema,
+                businessId: b.id,
+              });
+              const list = await tenantStorage.getRoutes();
+              all.push(...list);
+            } catch (e) {
+              log("warn", "Skipping tenant while aggregating routes", {
+                businessId: (b as any).id,
+              });
+            }
+          }
+          return res.json({ success: true, routes: all });
+        }
+
         const routes = await storage.getRoutes();
-        res.json({ success: true, routes });
+        return res.json({ success: true, routes });
       } catch (error) {
         log("error", "Failed to fetch routes", {
           error: error instanceof Error ? error.message : String(error),
