@@ -35,6 +35,7 @@ export async function tenantMiddleware(
     const publicPaths = new Set<string>([
       "/api/auth/health",
       "/api/auth/admin/login", // Allow admin login without tenant resolution
+      "/api/auth/profile",
     ]);
     if (publicPaths.has(req.path)) {
       return next();

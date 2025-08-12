@@ -328,4 +328,234 @@ export function registerAnalyticsRoutes(app: Express) {
       }
     }
   );
+
+  // Platform driver performance (exec scope)
+  app.get(
+    "/api/analytics/platform/driver-performance",
+    authenticateToken,
+    requirePermission("admin:read"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const businesses = await storage.getBusinesses();
+        const businessIdFilter = req.query.businessId
+          ? parseInt(String(req.query.businessId))
+          : undefined;
+        const startMs = req.query.start
+          ? Date.parse(String(req.query.start))
+          : undefined;
+        const endMs = req.query.end
+          ? Date.parse(String(req.query.end))
+          : undefined;
+        const results: any[] = [];
+
+        for (const b of businesses as any[]) {
+          if (
+            typeof businessIdFilter === "number" &&
+            b.id !== businessIdFilter
+          ) {
+            continue;
+          }
+          const tenantStorage = new (storage as any).constructor({
+            tenant: b.databaseSchema,
+            businessId: b.id,
+          });
+          const [drivers, routes, pickups] = await Promise.all([
+            tenantStorage.getDrivers(),
+            tenantStorage.getRoutes(),
+            tenantStorage.getPickupRequests(),
+          ]);
+
+          const inRangeRoute = (r: any) => {
+            const t = Date.parse(r.createdAt || r.startTime || 0);
+            if (Number.isNaN(t)) return true;
+            if (typeof startMs === "number" && t < startMs) return false;
+            if (typeof endMs === "number" && t > endMs) return false;
+            return true;
+          };
+          const inRangePickup = (p: any) => {
+            const t = Date.parse(p.completedAt || p.createdAt || 0);
+            if (Number.isNaN(t)) return true;
+            if (typeof startMs === "number" && t < startMs) return false;
+            if (typeof endMs === "number" && t > endMs) return false;
+            return true;
+          };
+
+          const filteredRoutes = routes.filter(inRangeRoute);
+          const filteredPickups = pickups.filter(inRangePickup);
+
+          const routesByDriverId = new Map<number, any[]>();
+          for (const r of filteredRoutes) {
+            const dId = (r as any).driverId as number | null;
+            if (!dId) continue;
+            const arr = routesByDriverId.get(dId) || [];
+            arr.push(r);
+            routesByDriverId.set(dId, arr);
+          }
+
+          const pickupsByRouteId = new Map<number, any[]>();
+          for (const p of filteredPickups) {
+            const routeId = (p as any).routeId as number | null;
+            if (!routeId) continue;
+            const arr = pickupsByRouteId.get(routeId) || [];
+            arr.push(p);
+            pickupsByRouteId.set(routeId, arr);
+          }
+
+          for (const d of drivers as any[]) {
+            const dId = d.id as number;
+            const dRoutes = routesByDriverId.get(dId) || [];
+            const assignedPickups = dRoutes.flatMap(
+              (r: any) => pickupsByRouteId.get(r.id) || []
+            );
+            const completed = assignedPickups.filter((p: any) => p.isCompleted);
+            const billed = assignedPickups.filter(
+              (p: any) => p.productionStatus === "billed"
+            );
+            const avgMinutes =
+              completed.length === 0
+                ? 0
+                : Math.round(
+                    completed.reduce((acc: number, p: any) => {
+                      const created = new Date(p.createdAt).getTime();
+                      const done = new Date(
+                        p.completedAt || p.createdAt
+                      ).getTime();
+                      return acc + Math.max(0, done - created);
+                    }, 0) /
+                      completed.length /
+                      60000
+                  );
+            const totalRouteMinutes = dRoutes.reduce(
+              (sum: number, r: any) =>
+                sum + (r.actualDuration || r.estimatedDuration || 0),
+              0
+            );
+
+            results.push({
+              businessId: b.id,
+              businessName: b.businessName,
+              driverId: dId,
+              driverName: d.name,
+              isActive: !!d.isActive,
+              routes: dRoutes.length,
+              pickupsAssigned: assignedPickups.length,
+              pickupsCompleted: completed.length,
+              pickupsBilled: billed.length,
+              averageCompletionMinutes: avgMinutes,
+              totalRouteMinutes,
+            });
+          }
+        }
+
+        // Basic sort: most completed first
+        results.sort((a, b) => b.pickupsCompleted - a.pickupsCompleted);
+        res.json({ success: true, drivers: results, generatedAt: Date.now() });
+      } catch (error) {
+        log("error", "Failed to compute driver performance", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res
+          .status(500)
+          .json({ success: false, message: "Driver analytics failed" });
+      }
+    }
+  );
+
+  // Platform customers report (exec scope)
+  app.get(
+    "/api/analytics/platform/customers",
+    authenticateToken,
+    requirePermission("admin:read"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const businesses = await storage.getBusinesses();
+        const businessIdFilter = req.query.businessId
+          ? parseInt(String(req.query.businessId))
+          : undefined;
+        const startMs = req.query.start
+          ? Date.parse(String(req.query.start))
+          : undefined;
+        const endMs = req.query.end
+          ? Date.parse(String(req.query.end))
+          : undefined;
+        const rows: any[] = [];
+
+        for (const b of businesses as any[]) {
+          if (
+            typeof businessIdFilter === "number" &&
+            b.id !== businessIdFilter
+          ) {
+            continue;
+          }
+          const tenantStorage = new (storage as any).constructor({
+            tenant: b.databaseSchema,
+            businessId: b.id,
+          });
+          const [customers, pickups] = await Promise.all([
+            tenantStorage.getCustomers(),
+            tenantStorage.getPickupRequests(),
+          ]);
+
+          const inRangePickup = (p: any) => {
+            const t = Date.parse(p.completedAt || p.createdAt || 0);
+            if (Number.isNaN(t)) return true;
+            if (typeof startMs === "number" && t < startMs) return false;
+            if (typeof endMs === "number" && t > endMs) return false;
+            return true;
+          };
+
+          const filteredPickups = pickups.filter(inRangePickup);
+
+          const pickupsByCustomerId = new Map<number, any[]>();
+          for (const p of filteredPickups) {
+            const cid = (p as any).customerId as number | null;
+            if (!cid) continue;
+            const arr = pickupsByCustomerId.get(cid) || [];
+            arr.push(p);
+            pickupsByCustomerId.set(cid, arr);
+          }
+
+          for (const c of customers as any[]) {
+            const list = pickupsByCustomerId.get(c.id) || [];
+            const billed = list.filter(
+              (p: any) => p.productionStatus === "billed"
+            );
+            const revenue = billed.reduce((sum: number, p: any) => {
+              const amount = Number((p as any).billedAmount ?? 0);
+              return sum + (Number.isFinite(amount) ? amount : 0);
+            }, 0);
+            const lastDate = list.reduce((max: number, p: any) => {
+              const t = new Date(p.completedAt || p.createdAt).getTime();
+              return Math.max(max, t);
+            }, 0);
+
+            rows.push({
+              businessId: b.id,
+              businessName: b.businessName,
+              customerId: c.id,
+              customerName: `${c.lastName}, ${c.firstName}`,
+              email: c.email,
+              totalOrders: list.length,
+              billedOrders: billed.length,
+              totalRevenue: revenue,
+              lastOrderAt: lastDate ? new Date(lastDate).toISOString() : null,
+            });
+          }
+        }
+
+        // Basic sort: highest revenue first
+        rows.sort((a, b) => (b.totalRevenue || 0) - (a.totalRevenue || 0));
+        res.json({ success: true, customers: rows, generatedAt: Date.now() });
+      } catch (error) {
+        log("error", "Failed to compute customers report", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res
+          .status(500)
+          .json({ success: false, message: "Customer analytics failed" });
+      }
+    }
+  );
 }
