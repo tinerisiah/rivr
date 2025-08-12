@@ -148,7 +148,7 @@ export function CustomersTab({
                     <div className="flex-1 min-w-0 space-y-2">
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                        <p className="text-gray-800 font-semibold text-lg">
+                        <p className="font-semibold text-lg">
                           {customer.lastName}, {customer.firstName}
                         </p>
                       </div>
