@@ -1,0 +1,26 @@
+{
+  "name": "@repo/schema",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src/ --max-warnings 0"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.39.3",
+    "drizzle-zod": "^0.7.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.31.0",
+    "tsup": "^8.5.0",
+    "typescript": "5.8.2"
+  }
+}
