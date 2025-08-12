@@ -38,6 +38,7 @@ import { BusinessForm } from "./admin/business-form";
 import AnalyticsDashboard from "./rivr-exec/analytics/AnalyticsDashboard";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { RefreshCcw } from "lucide-react";
 
 export function RivrExecPortal() {
   const router = useRouter();
@@ -214,6 +215,33 @@ export function RivrExecPortal() {
     }
   };
 
+  const handleRefreshOverview = async () => {
+    try {
+      const keys = [
+        "/api/admin/customers",
+        "/api/admin/pickup-requests",
+        "/api/admin/quote-requests",
+        "/api/admin/routes",
+        "/api/admin/drivers",
+        "/api/admin/businesses",
+      ];
+      await Promise.all(
+        keys.map((key) => queryClient.invalidateQueries({ queryKey: [key] }))
+      );
+      toast({
+        title: "Overview Refreshed",
+        description: "Latest data has been loaded",
+      });
+    } catch (error) {
+      console.error("Refresh failed:", error);
+      toast({
+        title: "Refresh Failed",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    }
+  };
+
   const copyToClipboard = async (token: string) => {
     const url = `${window.location.origin}/?token=${token}`;
     try {
@@ -301,6 +329,25 @@ export function RivrExecPortal() {
           className="space-y-6 sm:space-y-8"
         >
           <Header withPortalMenu={false} minimal={true} />
+
+          {/* Actions Bar */}
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshOverview}
+              className="shadow-sm"
+            >
+              <RefreshCcw className="w-4 h-4" />
+              <span>Refresh</span>
+            </Button>
+            <Link href="/rivr-exec/settings">
+              <Button variant="outline" size="sm" className="shadow-sm">
+                <Settings className="w-4 h-4" />
+                <span>Settings</span>
+              </Button>
+            </Link>
+          </div>
 
           {/* Main Content Tabs */}
           <Tabs defaultValue="overview" className="w-full">

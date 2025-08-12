@@ -41,6 +41,10 @@ export async function tenantMiddleware(
       return next();
     }
 
+    if (req.path.startsWith("/api/admin")) {
+      return next();
+    }
+
     const baseDomain = process.env.BASE_DOMAIN?.toLowerCase();
     const execSubdomain = (process.env.EXEC_SUBDOMAIN || "exec").toLowerCase();
 
