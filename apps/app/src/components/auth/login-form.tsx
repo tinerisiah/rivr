@@ -18,12 +18,15 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 
-const loginSchema = z.object({
+// Base schema for credentials. We conditionally extend it with `tenant`
+// for non-admin logins so the tenant value is preserved by the resolver.
+const baseLoginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-type LoginFormData = z.infer<typeof loginSchema> & { tenant?: string };
+type BaseLoginFormData = z.infer<typeof baseLoginSchema>;
+type LoginFormData = BaseLoginFormData & { tenant?: string };
 
 interface LoginFormProps {
   type: "business" | "rivr_admin" | "driver";
@@ -41,24 +44,27 @@ export function LoginForm({
   const { login, isLoading } = useAuth();
   const { toast } = useToast();
 
+  // Build schema based on login type. Business and driver require a tenant.
+  const schema =
+    type === "rivr_admin"
+      ? baseLoginSchema
+      : baseLoginSchema.extend({
+          tenant: z.string().min(1, "Please enter your tenant (subdomain)"),
+        });
+
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
   } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(schema),
   });
 
   const onSubmit = async (data: LoginFormData) => {
     try {
       setError(null);
       const tenantInput = (data.tenant || "").trim().toLowerCase();
-      if (type !== "rivr_admin" && !tenantInput) {
-        setError("Please enter your tenant (subdomain)");
-        return;
-      }
-
       if (tenantInput) {
         if (typeof window !== "undefined") {
           try {
@@ -67,12 +73,15 @@ export function LoginForm({
             document.cookie = `tenant_subdomain=${encodeURIComponent(
               tenantInput
             )}; path=/; samesite=lax`;
-          } catch (_) {
+          } catch {
             // ignore storage errors
           }
         }
       }
-      const result = await login(data, type);
+      const result = await login(
+        { email: data.email, password: data.password },
+        type
+      );
 
       if (result.success) {
         toast({
@@ -84,7 +93,7 @@ export function LoginForm({
       } else {
         setError(result.message);
       }
-    } catch (err) {
+    } catch {
       setError("An unexpected error occurred. Please try again.");
     }
   };
@@ -126,7 +135,13 @@ export function LoginForm({
                 type="text"
                 placeholder="your-tenant"
                 {...register("tenant")}
+                className={errors.tenant ? "border-red-500" : ""}
               />
+              {errors.tenant && (
+                <p className="text-sm text-red-500">
+                  {errors.tenant.message as string}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Enter your business subdomain (tenant), e.g. "acme".
               </p>
