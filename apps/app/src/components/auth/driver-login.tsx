@@ -12,6 +12,7 @@ import { Truck, ArrowLeft, Eye, EyeOff } from "lucide-react";
 export function DriverLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [tenant, setTenant] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -20,13 +21,23 @@ export function DriverLogin() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!email.trim() || !password.trim()) {
+    if (!email.trim() || !password.trim() || !tenant.trim()) {
       return;
     }
 
     setIsLoading(true);
 
     try {
+      try {
+        if (typeof window !== "undefined") {
+          const tenantValue = tenant.trim().toLowerCase();
+          window.localStorage.setItem("tenant_subdomain", tenantValue);
+          document.cookie = `tenant_subdomain=${encodeURIComponent(
+            tenantValue
+          )}; path=/; samesite=lax`;
+        }
+      } catch (_) {}
+
       const result = await login({ email: email.trim(), password }, "driver");
 
       if (result.success) {
@@ -55,6 +66,21 @@ export function DriverLogin() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="tenant">Tenant</Label>
+              <Input
+                id="tenant"
+                type="text"
+                value={tenant}
+                onChange={(e) => setTenant(e.target.value)}
+                placeholder="your-tenant"
+                required
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter your business subdomain (tenant), e.g. "acme".
+              </p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input

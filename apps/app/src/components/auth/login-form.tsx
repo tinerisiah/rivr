@@ -23,7 +23,7 @@ const loginSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-type LoginFormData = z.infer<typeof loginSchema>;
+type LoginFormData = z.infer<typeof loginSchema> & { tenant?: string };
 
 interface LoginFormProps {
   type: "business" | "rivr_admin" | "driver";
@@ -53,6 +53,25 @@ export function LoginForm({
   const onSubmit = async (data: LoginFormData) => {
     try {
       setError(null);
+      const tenantInput = (data.tenant || "").trim().toLowerCase();
+      if (type !== "rivr_admin" && !tenantInput) {
+        setError("Please enter your tenant (subdomain)");
+        return;
+      }
+
+      if (tenantInput) {
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem("tenant_subdomain", tenantInput);
+            // Optional: also set a session cookie for consistency with other flows
+            document.cookie = `tenant_subdomain=${encodeURIComponent(
+              tenantInput
+            )}; path=/; samesite=lax`;
+          } catch (_) {
+            // ignore storage errors
+          }
+        }
+      }
       const result = await login(data, type);
 
       if (result.success) {
@@ -97,6 +116,21 @@ export function LoginForm({
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
+          )}
+
+          {type !== "rivr_admin" && (
+            <div className="space-y-2">
+              <Label htmlFor="tenant">Tenant</Label>
+              <Input
+                id="tenant"
+                type="text"
+                placeholder="your-tenant"
+                {...register("tenant")}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter your business subdomain (tenant), e.g. "acme".
+              </p>
+            </div>
           )}
 
           <div className="space-y-2">

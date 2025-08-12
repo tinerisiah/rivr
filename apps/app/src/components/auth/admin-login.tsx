@@ -12,6 +12,7 @@ import { Shield, ArrowLeft, Eye, EyeOff } from "lucide-react";
 export function AdminLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Admin login does not require tenant, but we clear any leftover tenant info for consistency
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -27,6 +28,14 @@ export function AdminLogin() {
     setIsLoading(true);
 
     try {
+      // Ensure any tenant context is cleared for admin portal access
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.removeItem("tenant_subdomain");
+          document.cookie =
+            "tenant_subdomain=; path=/; Max-Age=0; samesite=lax";
+        } catch (_) {}
+      }
       const result = await login({ email: email.trim(), password }, "admin");
 
       if (result.success) {
