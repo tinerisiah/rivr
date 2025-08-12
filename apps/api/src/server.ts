@@ -1,4 +1,3 @@
-import { json, urlencoded } from "body-parser";
 import express, { type Express } from "express";
 import morgan from "morgan";
 import cors from "cors";
@@ -31,17 +30,26 @@ export const createServer = async (): Promise<Express> => {
     "http://localhost:3001",
     "http://localhost:3002",
   ];
-  const corsOrigin = (origin: string | undefined, callback: Function) => {
+  // Optionally extend via env: comma-separated list
+  const envAllowed = (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const corsOrigin = (
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void
+  ) => {
     if (!origin) return callback(null, true);
     try {
       const url = new URL(origin);
       const host = url.host.toLowerCase();
       const allowed =
         devOrigins.includes(origin) ||
+        envAllowed.includes(origin) ||
         host === baseDomain ||
         host.endsWith(`.${baseDomain}`) ||
         host.endsWith(`.${frontendDomain}`);
-      return callback(null, allowed);
+      return callback(null, !!allowed);
     } catch {
       return callback(null, false);
     }

@@ -374,6 +374,115 @@ export function registerAdminRoutes(app: Express) {
     }
   );
 
+  // Cross-tenant data access (exec scope)
+  app.get(
+    "/api/admin/tenants/:id/customers",
+    authenticateToken,
+    requirePermission("admin:read"),
+    async (req, res) => {
+      try {
+        const businessId = parseInt(req.params.id);
+        if (Number.isNaN(businessId)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid businessId" });
+        }
+        const baseStorage = getStorage(req);
+        const base = await baseStorage.getBusiness(businessId);
+        if (!base)
+          return res
+            .status(404)
+            .json({ success: false, message: "Business not found" });
+        const tenantStorage = new (baseStorage as any).constructor({
+          tenant: base.databaseSchema,
+          businessId,
+        });
+        const customers = await tenantStorage.getCustomers();
+        res.json({ success: true, customers });
+      } catch (error) {
+        log("error", "Failed to fetch tenant customers", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({
+          success: false,
+          message: "Failed to fetch tenant customers",
+        });
+      }
+    }
+  );
+
+  app.get(
+    "/api/admin/tenants/:id/drivers",
+    authenticateToken,
+    requirePermission("admin:read"),
+    async (req, res) => {
+      try {
+        const businessId = parseInt(req.params.id);
+        if (Number.isNaN(businessId)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid businessId" });
+        }
+        const baseStorage = getStorage(req);
+        const base = await baseStorage.getBusiness(businessId);
+        if (!base)
+          return res
+            .status(404)
+            .json({ success: false, message: "Business not found" });
+        const tenantStorage = new (baseStorage as any).constructor({
+          tenant: base.databaseSchema,
+          businessId,
+        });
+        const drivers = await tenantStorage.getDrivers();
+        res.json({ success: true, drivers });
+      } catch (error) {
+        log("error", "Failed to fetch tenant drivers", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({
+          success: false,
+          message: "Failed to fetch tenant drivers",
+        });
+      }
+    }
+  );
+
+  app.get(
+    "/api/admin/tenants/:id/pickup-requests",
+    authenticateToken,
+    requirePermission("admin:read"),
+    async (req, res) => {
+      try {
+        const businessId = parseInt(req.params.id);
+        if (Number.isNaN(businessId)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid businessId" });
+        }
+        const baseStorage = getStorage(req);
+        const base = await baseStorage.getBusiness(businessId);
+        if (!base)
+          return res
+            .status(404)
+            .json({ success: false, message: "Business not found" });
+        const tenantStorage = new (baseStorage as any).constructor({
+          tenant: base.databaseSchema,
+          businessId,
+        });
+        const requests = await tenantStorage.getPickupRequests();
+        res.json({ success: true, requests });
+      } catch (error) {
+        log("error", "Failed to fetch tenant pickup requests", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({
+          success: false,
+          message: "Failed to fetch tenant pickup requests",
+        });
+      }
+    }
+  );
+
   app.put(
     "/api/admin/businesses/:id/status",
     authenticateToken,

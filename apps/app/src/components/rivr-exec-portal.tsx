@@ -30,6 +30,7 @@ import {
   Users,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Header } from "./ui";
 import { BusinessesTab } from "./admin/businesses-tab";
@@ -745,6 +746,13 @@ export function RivrExecPortal() {
             </TabsContent>
 
             <TabsContent value="reports" className="space-y-6 mt-6">
+              <div className="flex justify-end">
+                <Link href="/rivr-exec/reports">
+                  <Button variant="outline" size="sm">
+                    Open Reports Page
+                  </Button>
+                </Link>
+              </div>
               <Card className=" border border-border p-6 shadow-sm">
                 <h3 className="text-lg font-bold text-foreground mb-4">
                   Executive Reports

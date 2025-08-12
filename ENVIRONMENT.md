@@ -40,6 +40,11 @@ RATE_LIMIT_MAX_REQUESTS=100
 LOG_LEVEL=info
 ENFORCE_TENANT=false
 
+# CORS
+# Comma-separated list of allowed origins (exact matches). Example:
+# ALLOWED_ORIGINS=https://rivr-front-dev.onrender.com,https://rivr-front-prod.onrender.com
+ALLOWED_ORIGINS=
+
 # Email (optional until automation is wired)
 SMTP_HOST=
 SMTP_PORT=587

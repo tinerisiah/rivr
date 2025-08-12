@@ -119,6 +119,9 @@ export default function RivrExecBusinessDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
+            <Link href="/rivr-exec/reports">
+              <Button variant="outline">Reports</Button>
+            </Link>
             {business?.status === "pending" && (
               <Button
                 onClick={() =>
@@ -161,6 +164,29 @@ export default function RivrExecBusinessDetailPage() {
             </Button>
           </div>
         </div>
+
+        <Card className="p-3 border border-border">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold">Tenant pages</h3>
+            <div className="flex gap-2 flex-wrap">
+              <Link href={`/rivr-exec/businesses/${businessId}/customers`}>
+                <Button variant="outline" size="sm">
+                  Customers
+                </Button>
+              </Link>
+              <Link href={`/rivr-exec/businesses/${businessId}/drivers`}>
+                <Button variant="outline" size="sm">
+                  Drivers
+                </Button>
+              </Link>
+              <Link href={`/rivr-exec/businesses/${businessId}/operations`}>
+                <Button variant="outline" size="sm">
+                  Operations
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card className="p-4 border border-border">

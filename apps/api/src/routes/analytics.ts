@@ -128,6 +128,10 @@ export function registerAnalyticsRoutes(app: Express) {
               (r: any) => r.productionStatus === "billed"
             );
             const completed = requests.filter((r: any) => r.isCompleted);
+            const revenueTotal = billed.reduce((sum: number, r: any) => {
+              const amount = Number((r as any).billedAmount ?? 0);
+              return sum + (Number.isFinite(amount) ? amount : 0);
+            }, 0);
             const avgMinutes =
               completed.length === 0
                 ? 0
@@ -149,6 +153,7 @@ export function registerAnalyticsRoutes(app: Express) {
               status: b.status,
               subscriptionStatus: b.subscriptionStatus,
               monthlyRevenue: b.monthlyRevenue || 0,
+              revenueTotal,
               totals: {
                 totalPickups: requests.length,
                 completedPickups: completed.length,
@@ -169,6 +174,10 @@ export function registerAnalyticsRoutes(app: Express) {
             ).length,
             totalMonthlyRevenue: perBusiness.reduce(
               (sum, b) => sum + (b.monthlyRevenue || 0),
+              0
+            ),
+            totalRevenue: perBusiness.reduce(
+              (sum, b) => sum + (b.revenueTotal || 0),
               0
             ),
             totalPickups: perBusiness.reduce(
