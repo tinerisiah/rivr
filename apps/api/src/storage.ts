@@ -54,11 +54,10 @@ class Storage {
       }
       return fn(db);
     }
-    // Execute within tenant-scoped transaction (sets search_path)
-    return db.transaction(async (tx) => {
-      await tx.execute(`SET LOCAL search_path TO ${this.tenantContext.tenant}`);
-      return fn(tx as unknown as typeof db);
-    });
+    // Neon HTTP driver doesn't support transactions or session state.
+    // Until a connection-oriented driver is used, fall back to shared schema.
+    // Note: This means tenant isolation via search_path isn't applied here.
+    return fn(db);
   }
   // Customer operations
   async createCustomer(data: InsertCustomer): Promise<Customer> {

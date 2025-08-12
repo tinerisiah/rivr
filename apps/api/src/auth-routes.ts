@@ -21,7 +21,7 @@ import { log } from "@repo/logger";
 import { getStorage } from "./storage";
 import { provisionTenantSchema } from "./lib/tenant-db";
 import { db } from "./db";
-import { refreshTokens, rivrAdmins, users } from "@repo/schema";
+import { refreshTokens, rivrAdmins, users, drivers } from "@repo/schema";
 import { eq } from "drizzle-orm";
 import { createBusinessVerificationEmail } from "./email-utils";
 
@@ -511,9 +511,13 @@ export function registerAuthRoutes(app: Express) {
     try {
       const { email, password } = loginSchema.parse(req.body);
 
-      // Tenant-scoped driver lookup
-      const storage = getStorage(req);
-      const driver = await storage.getDriverByEmail(email);
+      // Direct lookup avoids tenant transaction (neon-http does not support tx)
+      const driverRows = await db
+        .select()
+        .from(drivers)
+        .where(eq(drivers.email, email))
+        .limit(1);
+      const driver = driverRows[0];
 
       if (!driver) {
         return res.status(401).json({
