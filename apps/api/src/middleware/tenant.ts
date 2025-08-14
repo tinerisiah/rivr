@@ -46,7 +46,9 @@ export async function tenantMiddleware(
     const baseDomain = process.env.BASE_DOMAIN?.toLowerCase();
     const execSubdomain = (process.env.EXEC_SUBDOMAIN || "exec").toLowerCase();
 
-    const host = getHostWithoutPort(req.headers.host);
+    const forwardedHost = req.headers["x-forwarded-host"] as string | undefined;
+    const hostHeader = forwardedHost || req.headers.host;
+    const host = getHostWithoutPort(hostHeader);
     if (!host) {
       return res
         .status(400)
