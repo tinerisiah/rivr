@@ -25,6 +25,10 @@ export const DeviceDetection = {
     return /iPad|iPhone|iPod/.test(navigator.userAgent);
   },
 
+  isMacOS: (): boolean => {
+    return /Macintosh|Mac OS X/.test(navigator.userAgent);
+  },
+
   isAndroid: (): boolean => {
     return /Android/.test(navigator.userAgent);
   },
@@ -52,8 +56,11 @@ export const DeviceDetection = {
 function createAppleMapsUrl(options: NavigationOptions): string {
   const { origin, destination, waypoints, travelMode = "driving" } = options;
 
-  // Try native scheme first for better iOS compatibility
-  let url = "maps://maps.apple.com/?";
+  // Prefer native scheme on iOS, use https on macOS for better browser compatibility
+  const useNativeScheme = DeviceDetection.isIOS();
+  let url = useNativeScheme
+    ? "maps://maps.apple.com/?"
+    : "https://maps.apple.com/?";
   const params: string[] = [];
 
   // Set origin if provided
@@ -75,10 +82,10 @@ function createAppleMapsUrl(options: NavigationOptions): string {
   // Enhanced waypoint support for Apple Maps - create individual stop points
   if (waypoints && waypoints.length > 0) {
     waypoints.forEach((waypoint, index) => {
-      const waypointStr = waypoint.address 
-        ? encodeURIComponent(waypoint.address) 
+      const waypointStr = waypoint.address
+        ? encodeURIComponent(waypoint.address)
         : `${waypoint.lat},${waypoint.lng}`;
-      
+
       // Add each waypoint as both a waypoint and destination for comprehensive routing
       params.push(`wayp${index}=${waypointStr}`);
       params.push(`daddr=${waypointStr}`);
@@ -92,10 +99,10 @@ function createAppleMapsUrl(options: NavigationOptions): string {
     transit: "r",
   };
   params.push(`dirflg=${appleModes[travelMode] || "d"}`);
-  
+
   // Enable navigation mode for turn-by-turn directions
   params.push("nav=1");
-  
+
   // Set map type to standard
   params.push("t=m");
 
@@ -109,8 +116,11 @@ function createAppleMapsMultiStopUrl(
   currentLocation: NavigationPoint | null,
   pickupLocations: NavigationPoint[]
 ): string {
-  // Use native maps:// scheme for better iOS compatibility
-  let url = "maps://maps.apple.com/?";
+  // Prefer native scheme on iOS, use https on macOS for better browser compatibility
+  const useNativeScheme = DeviceDetection.isIOS();
+  let url = useNativeScheme
+    ? "maps://maps.apple.com/?"
+    : "https://maps.apple.com/?";
   const params: string[] = [];
 
   // Set starting location
@@ -125,13 +135,13 @@ function createAppleMapsMultiStopUrl(
   // Add each pickup location as a separate destination parameter
   // This creates individual waypoints that Apple Maps will navigate through sequentially
   pickupLocations.forEach((pickup, index) => {
-    const destination = pickup.address 
+    const destination = pickup.address
       ? encodeURIComponent(pickup.address)
       : `${pickup.lat},${pickup.lng}`;
-    
+
     // For Apple Maps, we can add multiple daddr parameters to create a multi-stop route
     params.push(`daddr=${destination}`);
-    
+
     // Also add waypoint parameter for better route planning
     if (index < pickupLocations.length - 1) {
       params.push(`wayp=${destination}`);
@@ -140,10 +150,10 @@ function createAppleMapsMultiStopUrl(
 
   // Set driving mode for delivery routes
   params.push("dirflg=d");
-  
+
   // Enable navigation mode
   params.push("nav=1");
-  
+
   // Set map type to standard
   params.push("t=m");
 
@@ -217,7 +227,7 @@ export function openNativeNavigation(options: NavigationOptions): void {
 
   let navigationUrl: string;
 
-  if (isIOS()) {
+  if (isIOS() || DeviceDetection.isMacOS()) {
     // Use Apple Maps on iOS for better integration
     navigationUrl = createAppleMapsUrl(options);
 
@@ -247,13 +257,16 @@ export function openNativeNavigation(options: NavigationOptions): void {
         }
       }
 
-      // Fallback timeout in case Apple Maps doesn't respond
-      setTimeout(() => {
-        // Only open Google Maps fallback if we're still on the same page
-        if (document.hasFocus()) {
-          window.open(fallbackUrl, "_blank");
-        }
-      }, 2000);
+      // Provide a delayed fallback only on iOS (not macOS) to avoid opening Google Maps web
+      if (isIOS() && !DeviceDetection.isMacOS()) {
+        setTimeout(() => {
+          const stillOnPage =
+            document.visibilityState === "visible" && document.hasFocus();
+          if (stillOnPage) {
+            window.open(fallbackUrl, "_blank");
+          }
+        }, 3000);
+      }
     } catch (error) {
       // Apple Maps failed, fallback to Google Maps
       window.open(fallbackUrl, "_blank");
@@ -331,7 +344,11 @@ export function createAppleMapsRouteUrl(
   currentLocation: NavigationPoint | null,
   pickupLocations: NavigationPoint[]
 ): string {
-  let url = "maps://maps.apple.com/?";
+  // Prefer native scheme on iOS, use https on macOS for better browser compatibility
+  const useNativeScheme = DeviceDetection.isIOS();
+  let url = useNativeScheme
+    ? "maps://maps.apple.com/?"
+    : "https://maps.apple.com/?";
   const params: string[] = [];
 
   // Set starting location
@@ -415,7 +432,7 @@ export function openOptimizedRouteNavigation(
     // Multiple destinations - use enhanced multi-stop navigation
     const { isIOS } = DeviceDetection;
 
-    if (isIOS()) {
+    if (isIOS() || DeviceDetection.isMacOS()) {
       // Use enhanced Apple Maps multi-stop URL for iOS
       const appleMapsUrl = createAppleMapsMultiStopUrl(
         startLocation,
@@ -458,13 +475,11 @@ export function openAppleMapsWithAllPickups(
     travelMode: "driving",
   });
 
-  
-  
-
-  if (DeviceDetection.isIOS()) {
+  if (DeviceDetection.isIOS() || DeviceDetection.isMacOS()) {
     try {
       // Enhanced iOS detection and opening method
-      const isStandalone = (window.navigator as { standalone?: boolean }).standalone;
+      const isStandalone = (window.navigator as { standalone?: boolean })
+        .standalone;
       const isSafari =
         /Safari/.test(navigator.userAgent) &&
         !/CriOS|FxiOS/.test(navigator.userAgent);
@@ -483,13 +498,16 @@ export function openAppleMapsWithAllPickups(
 
       // Attempting to open Apple Maps with multiple pickup locations as individual stops
 
-      // Fallback after delay
-      setTimeout(() => {
-        if (document.hasFocus()) {
-          // Apple Maps may not have opened, providing Google Maps fallback
-          window.open(googleMapsUrl, "_blank");
-        }
-      }, 3000);
+      // Only provide fallback on iOS (not macOS) to avoid opening Google Maps web
+      if (DeviceDetection.isIOS() && !DeviceDetection.isMacOS()) {
+        setTimeout(() => {
+          const stillOnPage =
+            document.visibilityState === "visible" && document.hasFocus();
+          if (stillOnPage) {
+            window.open(googleMapsUrl, "_blank");
+          }
+        }, 3000);
+      }
     } catch (error) {
       // Error opening Apple Maps, using fallback
       window.open(googleMapsUrl, "_blank");

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import WelcomeAnimation, {
   useWelcomeAnimation,
 } from "@/components/welcome-animation";
@@ -38,13 +39,14 @@ import type {
   QuoteRequest,
 } from "@/lib/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { API_BASE_URL } from "@/lib/api";
 
 // Form schemas
 const customerFormSchema = z.object({
@@ -142,6 +144,8 @@ export function AdminPanelRefactored({
   const [selectedCustomerForEmail, setSelectedCustomerForEmail] =
     useState<Customer | null>(null);
   const [customSignature, setCustomSignature] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
   const [showJobDetailsModal, setShowJobDetailsModal] =
     useState<PickupRequest | null>(null);
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
@@ -484,6 +488,78 @@ export function AdminPanelRefactored({
   // Data extraction
   const customers = (customersData as any)?.customers || [];
   const requests = (requestsData as any)?.requests || [];
+  const rqClient = useQueryClient();
+  const pendingStatusUpdateIdsRef = useRef<Set<number>>(new Set());
+  // Realtime: subscribe to WS and invalidate production data on updates
+  useEffect(() => {
+    if (!isMainAuth) return;
+    let ws: WebSocket | null = null;
+    let heartbeat: number | null = null;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      try {
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("accessToken")
+            : null;
+        if (!token) return;
+        const url = new URL(API_BASE_URL);
+        const wsScheme = url.protocol === "https:" ? "wss" : "ws";
+        const wsUrl = `${wsScheme}://${url.host}/ws?token=${encodeURIComponent(token)}`;
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          heartbeat = window.setInterval(() => {
+            try {
+              ws?.send(JSON.stringify({ type: "ping", t: Date.now() }));
+            } catch {}
+          }, 20000);
+        };
+        ws.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data || "{}");
+            if (msg?.type === "PRODUCTION_STATUS_UPDATED") {
+              const updatedId = msg?.data?.id as number | undefined;
+              if (
+                updatedId &&
+                pendingStatusUpdateIdsRef.current.has(updatedId)
+              ) {
+                pendingStatusUpdateIdsRef.current.delete(updatedId);
+                return;
+              }
+              rqClient.invalidateQueries({
+                queryKey: ["/api/admin/pickup-requests"],
+              });
+            } else if (msg?.type === "NEW_PICKUP_REQUEST") {
+              rqClient.invalidateQueries({
+                queryKey: ["/api/admin/pickup-requests"],
+              });
+            }
+          } catch {}
+        };
+        ws.onclose = () => {
+          if (heartbeat) window.clearInterval(heartbeat);
+          heartbeat = null;
+          reconnectTimer = window.setTimeout(connect, 3000) as any;
+        };
+        ws.onerror = () => {
+          try {
+            ws?.close();
+          } catch {}
+        };
+      } catch {}
+    };
+
+    connect();
+    return () => {
+      if (heartbeat) window.clearInterval(heartbeat);
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      try {
+        ws?.close();
+      } catch {}
+    };
+  }, [isMainAuth, rqClient]);
+
   const quoteRequests = (quoteRequestsData as any)?.requests || [];
   const routes = (routesData as any)?.routes || [];
   const drivers = (driversData as any)?.drivers || [];
@@ -616,6 +692,7 @@ export function AdminPanelRefactored({
 
   const updateProductionStatus = async (requestId: number, status: string) => {
     try {
+      pendingStatusUpdateIdsRef.current.add(requestId);
       const response = await apiRequest(
         "PUT",
         `/api/admin/pickup-requests/${requestId}/production-status`,
@@ -640,6 +717,12 @@ export function AdminPanelRefactored({
         description: "Failed to update production status",
         variant: "destructive",
       });
+    } finally {
+      // Remove the id after a short delay as a safety, in case we never get a WS echo
+      const id = requestId;
+      setTimeout(() => {
+        pendingStatusUpdateIdsRef.current.delete(id);
+      }, 5000);
     }
   };
 
@@ -689,8 +772,26 @@ export function AdminPanelRefactored({
 
   const handleEmailCustomer = (customer: Customer) => {
     setSelectedCustomerForEmail(customer);
-    setCustomSignature(customer.customSignature || "");
+    const signature = customer.customSignature || "";
+    setCustomSignature(signature);
+    setEmailSubject(
+      `Hello ${customer.firstName} - Update from ${customer.businessName}`
+    );
+    setEmailBody(`Hi ${customer.firstName},\n\n\n${signature}`);
     setShowCustomerEmailModal(true);
+  };
+
+  const handleSendCustomerEmail = () => {
+    if (!selectedCustomerForEmail) return;
+    const mailto = `mailto:${selectedCustomerForEmail.email}?subject=${encodeURIComponent(
+      emailSubject
+    )}&body=${encodeURIComponent(emailBody)}`;
+    window.open(mailto, "_blank");
+    toast({
+      title: "Email Client Opened",
+      description: "Compose your message in your default email client.",
+    });
+    setShowCustomerEmailModal(false);
   };
 
   const handleAddBusiness = () => {
@@ -1491,6 +1592,67 @@ export function AdminPanelRefactored({
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Customer Email Modal */}
+      <Dialog
+        open={showCustomerEmailModal}
+        onOpenChange={(open) => {
+          setShowCustomerEmailModal(open);
+          if (!open) {
+            setSelectedCustomerForEmail(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto bg-popover border border-border shadow-sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-foreground mb-2">
+              Email Customer
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label className="text-muted-foreground">To</Label>
+              <Input value={selectedCustomerForEmail?.email || ""} disabled />
+            </div>
+            <div>
+              <Label className="text-muted-foreground">Subject</Label>
+              <Input
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                placeholder="Subject"
+              />
+            </div>
+            <div>
+              <Label className="text-muted-foreground">Message</Label>
+              <Textarea
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+                rows={8}
+                className="resize-none"
+                placeholder="Write your message..."
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                type="button"
+                onClick={handleSendCustomerEmail}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                Open in Email Client
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowCustomerEmailModal(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

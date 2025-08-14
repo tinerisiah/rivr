@@ -65,4 +65,4 @@ export {
   ToastTitle,
   ToastViewport,
 } from "./toast";
-export { Toaster } from "./toaster";
+export { Toaster } from "./sonner";

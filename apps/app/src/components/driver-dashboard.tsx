@@ -45,71 +45,55 @@ import {
   Truck,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { API_BASE_URL, buildApiUrl as buildApiUrl2 } from "@/lib/api";
+import { API_BASE_URL } from "@/lib/api";
+import {
+  DeviceDetection,
+  openNativeNavigation,
+  openAppleMapsWithAllPickups,
+} from "@/lib/navigation-utils";
 // Simple navigation utility for driver dashboard
 const openNavigation = (addresses: string[]) => {
-  if (addresses.length === 0) {
+  if (!addresses || addresses.length === 0) {
     return;
   }
 
-  // Detect if on iOS device
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isAndroid = /Android/.test(navigator.userAgent);
+  const points = addresses.map((addr) => ({
+    lat: 0,
+    lng: 0,
+    address: addr,
+    name: addr,
+  }));
 
-  let url = "";
-
-  if (isIOS) {
-    // Apple Maps for iOS - use proper multi-stop format
-    if (addresses.length === 1) {
-      const address = encodeURIComponent(addresses[0]);
-      url = `maps://maps.apple.com/?daddr=${address}&dirflg=d`;
-    } else {
-      // For multiple addresses, create a route with all stops
-      // Apple Maps supports multiple destinations in the query parameter
-      const encodedAddresses = addresses.map((addr) =>
-        encodeURIComponent(addr)
-      );
-      // Use saddr for starting location (current location) and daddr for destinations
-      url = `maps://maps.apple.com/?saddr=Current+Location&daddr=${encodedAddresses.join("+to:")}&dirflg=d`;
-    }
-  } else {
-    // Fallback to Google Maps for non-iOS devices
-    if (addresses.length === 1) {
-      const address = encodeURIComponent(addresses[0]);
-      url = `https://www.google.com/maps/dir/current+location/${address}`;
-    } else {
-      // Multiple addresses for Google Maps
-      const waypoints = addresses
-        .map((addr) => encodeURIComponent(addr))
-        .join("/");
-      url = `https://www.google.com/maps/dir/current+location/${waypoints}`;
-    }
-  }
-
-  // For iOS devices, we want to ensure Apple Maps opens directly
-  // Use location.href for custom scheme URLs to avoid popup blockers
   try {
-    if (isIOS && url.startsWith("maps://")) {
-      // For Apple Maps URLs, use direct location assignment
-      window.location.href = url;
-    } else {
-      // For web URLs, try window.open first, then fallback
-      const newWindow = window.open(url, "_blank");
-      if (!newWindow) {
-        // Fallback to location assignment if popup blocked
-        window.location.href = url;
-      }
+    if (points.length === 1) {
+      openNativeNavigation({
+        destination: points[0],
+        travelMode: "driving",
+      });
+      return;
     }
-  } catch (error) {
-    // Navigation failed - silently ignore
-    // Final fallback: create a temporary link and click it
-    const link = document.createElement("a");
-    link.href = url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+
+    if (DeviceDetection.isIOS() || DeviceDetection.isMacOS()) {
+      // Prefer Apple Maps with multiple stops on iOS
+      openAppleMapsWithAllPickups(null, points);
+    } else {
+      // Use destination + waypoints for Android/Web
+      const destination = points[points.length - 1];
+      const waypoints = points.slice(0, -1);
+      openNativeNavigation({
+        destination,
+        waypoints,
+        travelMode: "driving",
+      });
+    }
+  } catch {
+    // Fallback to Google Maps web with destination only
+    const dest = encodeURIComponent(addresses[addresses.length - 1]);
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving&dir_action=navigate`;
+    const newWindow = window.open(url, "_blank");
+    if (!newWindow) {
+      window.location.href = url;
+    }
   }
 };
 
@@ -192,15 +176,7 @@ export function DriverDashboard() {
   }, [isMainAuth, user, toast]);
 
   // PIN authentication removed
-  const authMutation = useMutation({
-    mutationFn: async (pin: string) => {
-      throw new Error("PIN auth removed");
-    },
-    onSuccess: () => {},
-    onError: (error) => {
-      console.error("Authentication error:", error);
-    },
-  });
+  // Deprecated PIN auth removed
 
   const handleLogout = async () => {
     try {

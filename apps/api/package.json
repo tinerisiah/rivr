@@ -13,6 +13,7 @@
     "db:push": "drizzle-kit push",
     "seed": "tsx scripts/seed.ts",
     "seed:auth": "tsx scripts/seed.ts auth",
+    "seed:full": "tsx scripts/seed.ts",
     "tenant:create": "tsx scripts/create-tenant-schema.ts",
     "tenant:seed": "tsx scripts/migrate-initial-tenant-seed.ts"
   },

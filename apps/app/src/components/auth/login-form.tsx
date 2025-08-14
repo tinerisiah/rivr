@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useToast } from "../../hooks/use-toast";
 import { useAuth } from "../../lib/auth";
+import { useTenant } from "../../lib/tenant-context";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import {
@@ -43,14 +44,17 @@ export function LoginForm({
   const [error, setError] = useState<string | null>(null);
   const { login, isLoading } = useAuth();
   const { toast } = useToast();
+  const { subdomain: detectedSubdomain, isExec } = useTenant();
+
+  const hasSubdomain = Boolean(detectedSubdomain) && !isExec;
 
   // Build schema based on login type. Business and driver require a tenant.
-  const schema =
-    type === "rivr_admin"
-      ? baseLoginSchema
-      : baseLoginSchema.extend({
-          tenant: z.string().min(1, "Please enter your tenant (subdomain)"),
-        });
+  const shouldRequireTenant = type !== "rivr_admin" && !hasSubdomain;
+  const schema = shouldRequireTenant
+    ? baseLoginSchema.extend({
+        tenant: z.string().min(1, "Please enter your tenant (subdomain)"),
+      })
+    : baseLoginSchema;
 
   const {
     register,
@@ -64,7 +68,9 @@ export function LoginForm({
   const onSubmit = async (data: LoginFormData) => {
     try {
       setError(null);
-      const tenantInput = (data.tenant || "").trim().toLowerCase();
+      const tenantInput = (data.tenant || detectedSubdomain || "")
+        .trim()
+        .toLowerCase();
       if (tenantInput) {
         if (typeof window !== "undefined") {
           try {
@@ -127,7 +133,7 @@ export function LoginForm({
             </Alert>
           )}
 
-          {type !== "rivr_admin" && (
+          {shouldRequireTenant && (
             <div className="space-y-2">
               <Label htmlFor="tenant">Tenant</Label>
               <Input

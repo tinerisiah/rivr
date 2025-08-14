@@ -6,13 +6,6 @@ import React, { useEffect, useState } from "react";
 import { LoginForm } from "../../components/auth/login-form";
 import { RegisterForm } from "../../components/auth/register-form";
 import { Button } from "../../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../../components/ui/card";
 import { useAuth } from "../../lib/auth";
 
 export function AuthPageContent() {
@@ -118,7 +111,7 @@ export function AuthPageContent() {
 
         {/* Footer */}
         <div className="text-center mt-12 text-sm text-muted-foreground">
-          <p>&copy; 2024 RIVR. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} RIVR. All rights reserved.</p>
           <p className="mt-1">
             <a href="#" className="hover:text-foreground">
               Privacy Policy

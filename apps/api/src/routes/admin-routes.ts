@@ -214,6 +214,16 @@ export function registerAdminRoutes(app: Express) {
             .json({ success: false, message: "Pickup request not found" });
         }
 
+        // Broadcast production status update to tenant room (admins/drivers)
+        const tenantId = (req as any).businessId as number | undefined;
+        if (tenantId) {
+          const { broadcastToDrivers } = await import("./websocket-routes");
+          broadcastToDrivers(tenantId, {
+            type: "PRODUCTION_STATUS_UPDATED",
+            data: { id: pickupId, productionStatus },
+          });
+        }
+
         res.json({
           success: true,
           request: updated,

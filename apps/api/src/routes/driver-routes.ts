@@ -158,6 +158,15 @@ export function registerDriverRoutes(app: Express) {
           completedAt: new Date(),
         });
 
+        // Broadcast production status update to tenant room (admins/drivers)
+        const tenantId = (req as any).businessId as number | undefined;
+        if (tenantId) {
+          broadcastToDrivers(tenantId, {
+            type: "PRODUCTION_STATUS_UPDATED",
+            data: { id: pickupId, productionStatus: "in_process" },
+          });
+        }
+
         res.json({
           success: true,
           message: "Pickup completed successfully",
@@ -198,6 +207,15 @@ export function registerDriverRoutes(app: Express) {
           deliveryId,
           "ready_to_bill"
         );
+
+        // Broadcast production status update to tenant room (admins/drivers)
+        const tenantId = (req as any).businessId as number | undefined;
+        if (tenantId) {
+          broadcastToDrivers(tenantId, {
+            type: "PRODUCTION_STATUS_UPDATED",
+            data: { id: deliveryId, productionStatus: "ready_to_bill" },
+          });
+        }
 
         res.json({
           success: true,

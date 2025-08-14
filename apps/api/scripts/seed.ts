@@ -205,6 +205,28 @@ async function seedFullExtras(): Promise<void> {
         created_at timestamp DEFAULT now() NOT NULL
       );
     `);
+    // Backfill columns that may be missing from older tenant schemas
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS license_number text;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS password text;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS status text DEFAULT 'available' NOT NULL;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true NOT NULL;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS current_latitude text;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS current_longitude text;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS created_at timestamp DEFAULT now() NOT NULL;`
+    );
     await db.execute(`
       CREATE TABLE IF NOT EXISTS ${schema}.routes (
         id serial PRIMARY KEY,
@@ -300,7 +322,158 @@ async function seedFullExtras(): Promise<void> {
     }
     console.log("✅ 10 drivers created");
 
+    // Ensure known test drivers exist in each tenant with hashed passwords
+    console.log(`👤 Seeding test driver credentials for ${b.business_name}...`);
+    const tenantDriverPassword = await hashPassword("driver123");
+    const testDrivers = [
+      {
+        name: "Alex Johnson",
+        email: "alex@rivr.com",
+        phone: "(555) 123-4567",
+        license_number: "DL123456789",
+      },
+      {
+        name: "Maria Garcia",
+        email: "maria@rivr.com",
+        phone: "(555) 234-5678",
+        license_number: "DL987654321",
+      },
+      {
+        name: "David Chen",
+        email: "david@rivr.com",
+        phone: "(555) 345-6789",
+        license_number: "DL456789123",
+      },
+    ];
+    // Remove any existing rows for these emails (some environments lack a unique index on email)
+    const emailsCsv = testDrivers.map((d) => `'${esc(d.email)}'`).join(",");
+    await db.execute(
+      `DELETE FROM ${schema}.drivers WHERE email IN (${emailsCsv});`
+    );
+    for (const d of testDrivers) {
+      await db.execute(`
+        INSERT INTO ${schema}.drivers (name, email, phone, license_number, password, status, is_active)
+        VALUES ('${esc(d.name)}', '${esc(d.email)}', '${esc(d.phone)}', '${esc(d.license_number)}', '${tenantDriverPassword}', 'available', true);
+      `);
+    }
+    console.log("✅ Tenant test drivers created/updated with passwords");
+
     console.log(`📦 Seeding pickup requests for ${b.business_name}...`);
+    // Real US addresses to improve navigation realism for seeded tasks
+    const realUsAddresses = [
+      {
+        address: "1600 Amphitheatre Pkwy, Mountain View, CA 94043",
+        lat: 37.422,
+        lng: -122.0841,
+      },
+      {
+        address: "1 Apple Park Way, Cupertino, CA 95014",
+        lat: 37.3349,
+        lng: -122.009,
+      },
+      {
+        address: "1 Infinite Loop, Cupertino, CA 95014",
+        lat: 37.33182,
+        lng: -122.03118,
+      },
+      {
+        address: "350 5th Ave, New York, NY 10118",
+        lat: 40.74844,
+        lng: -73.98566,
+      },
+      {
+        address: "233 S Wacker Dr, Chicago, IL 60606",
+        lat: 41.87888,
+        lng: -87.6359,
+      },
+      {
+        address: "111 8th Ave, New York, NY 10011",
+        lat: 40.74111,
+        lng: -74.0039,
+      },
+      {
+        address: "1 Microsoft Way, Redmond, WA 98052",
+        lat: 47.63962,
+        lng: -122.12806,
+      },
+      {
+        address: "701 1st Ave, Sunnyvale, CA 94089",
+        lat: 37.41621,
+        lng: -122.02557,
+      },
+      {
+        address: "1 Hacker Way, Menlo Park, CA 94025",
+        lat: 37.48485,
+        lng: -122.14838,
+      },
+      {
+        address: "500 Terry A Francois Blvd, San Francisco, CA 94158",
+        lat: 37.77072,
+        lng: -122.38605,
+      },
+      {
+        address: "600 Congress Ave, Austin, TX 78701",
+        lat: 30.2681,
+        lng: -97.7419,
+      },
+      {
+        address: "405 Lexington Ave, New York, NY 10174",
+        lat: 40.75162,
+        lng: -73.9755,
+      },
+      {
+        address: "1000 5th Ave, New York, NY 10028",
+        lat: 40.7794,
+        lng: -73.9632,
+      },
+      {
+        address: "151 3rd St, San Francisco, CA 94103",
+        lat: 37.78572,
+        lng: -122.40107,
+      },
+      {
+        address: "4 Pennsylvania Plaza, New York, NY 10001",
+        lat: 40.75054,
+        lng: -73.99345,
+      },
+      {
+        address: "24 Willie Mays Plaza, San Francisco, CA 94107",
+        lat: 37.77859,
+        lng: -122.38927,
+      },
+      {
+        address: "1600 Pennsylvania Ave NW, Washington, DC 20500",
+        lat: 38.8977,
+        lng: -77.03653,
+      },
+      {
+        address: "405 Howard St, San Francisco, CA 94105",
+        lat: 37.78802,
+        lng: -122.39693,
+      },
+      {
+        address: "2000 K St NW, Washington, DC 20006",
+        lat: 38.90262,
+        lng: -77.04545,
+      },
+      {
+        address: "2211 N 1st St, San Jose, CA 95131",
+        lat: 37.37008,
+        lng: -121.91686,
+      },
+    ];
+    const englishNotes = [
+      "Please call upon arrival.",
+      "Ask for the front desk upon entry.",
+      "Gate code will be provided on site.",
+      "Customer prefers afternoon pickup.",
+      "Park near the loading zone.",
+      "Verify order before leaving.",
+      "Signature required at handoff.",
+      "Use the service entrance only.",
+      "Check in with reception first.",
+      "Items are ready at the counter.",
+    ];
     const statuses = [
       "pending",
       "in_process",
@@ -318,7 +491,8 @@ async function seedFullExtras(): Promise<void> {
         provider: "example.com",
       });
       const phone = faker.phone.number();
-      const address = faker.location.streetAddress({ useFullAddress: true });
+      const addr = realUsAddresses[i % realUsAddresses.length];
+      const address = addr.address;
       const wheelCount = faker.number.int({ min: 1, max: 8 });
       const status =
         statuses[faker.number.int({ min: 0, max: statuses.length - 1 })];
@@ -328,12 +502,12 @@ async function seedFullExtras(): Promise<void> {
         "high",
         "urgent",
       ]);
-      const notes = faker.lorem.sentence();
+      const notes = faker.helpers.arrayElement(englishNotes);
       await db.execute(`
         INSERT INTO ${schema}.pickup_requests (
           customer_id, first_name, last_name, email, phone, business_name, address, wheel_count, latitude, longitude, production_status, priority, customer_notes
         ) VALUES (
-          ${cid}, '${esc(first)}', '${esc(last)}', '${esc(email)}', '${esc(phone)}', '${esc(b.business_name)}', '${esc(address)}', ${wheelCount}, '34.0522', '-118.2437', '${esc(status)}', '${esc(priority)}', '${esc(notes)}'
+          ${cid}, '${esc(first)}', '${esc(last)}', '${esc(email)}', '${esc(phone)}', '${esc(b.business_name)}', '${esc(address)}', ${wheelCount}, '${addr.lat}', '${addr.lng}', '${esc(status)}', '${esc(priority)}', '${esc(notes)}'
         );
       `);
     }
