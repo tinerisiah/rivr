@@ -40,11 +40,6 @@ export const createServer = async (): Promise<Express> => {
     callback: (err: Error | null, allow?: boolean) => void
   ) => {
     if (!origin) return callback(null, true);
-    console.log("origin", origin);
-    console.log("baseDomain", baseDomain);
-    console.log("frontendDomain", frontendDomain);
-    console.log("devOrigins", devOrigins);
-    console.log("envAllowed", envAllowed);
     try {
       const url = new URL(origin);
       const host = url.host.toLowerCase();
@@ -53,7 +48,8 @@ export const createServer = async (): Promise<Express> => {
         envAllowed.includes(origin) ||
         host === baseDomain ||
         host.endsWith(`.${baseDomain}`) ||
-        host.endsWith(`.${frontendDomain}`);
+        host.endsWith(`.${frontendDomain}`) ||
+        origin.includes(envAllowed.map((s) => s.toLowerCase()).join(","));
       return callback(null, !!allowed);
     } catch {
       return callback(null, false);
