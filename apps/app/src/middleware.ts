@@ -17,9 +17,6 @@ export function middleware(request: NextRequest) {
       return parts.length > 1 ? parts[0] : null;
     }
 
-    console.log("host", host);
-    console.log("baseDomain", baseDomain);
-
     if (host.endsWith(`.${baseDomain}`)) {
       const withoutBase = host.slice(0, -`.${baseDomain}`.length);
       return withoutBase || null;
@@ -39,8 +36,6 @@ export function middleware(request: NextRequest) {
     res.cookies.delete("tenant_subdomain");
     return res;
   }
-
-  console.log("subdomain", subdomain);
 
   // Handle business subdomains
   if (subdomain && subdomain !== "www" && subdomain !== "localhost") {

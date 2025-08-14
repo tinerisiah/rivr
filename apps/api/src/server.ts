@@ -40,6 +40,11 @@ export const createServer = async (): Promise<Express> => {
     callback: (err: Error | null, allow?: boolean) => void
   ) => {
     if (!origin) return callback(null, true);
+    console.log("origin", origin);
+    console.log("baseDomain", baseDomain);
+    console.log("frontendDomain", frontendDomain);
+    console.log("devOrigins", devOrigins);
+    console.log("envAllowed", envAllowed);
     try {
       const url = new URL(origin);
       const host = url.host.toLowerCase();
