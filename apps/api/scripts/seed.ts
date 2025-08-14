@@ -139,6 +139,18 @@ async function seedAuth(): Promise<void> {
       status: "active",
       subscription_plan: "enterprise",
     },
+    {
+      business_name: "the wheel house",
+      owner_first_name: "William",
+      owner_last_name: "House",
+      owner_email: "owner@thewheelhouse.com",
+      phone: "(555) 555-1212",
+      address: "789 Wheel Way, Rivertown, CA 90212",
+      subdomain: "the-wheel-house",
+      database_schema: "the_wheel_house",
+      status: "active",
+      subscription_plan: "professional",
+    },
   ];
 
   for (const business of businessUsers) {
@@ -541,6 +553,7 @@ async function main() {
   console.log("\n🏢 Business Users:");
   console.log("  Email: robert@smithauto.com | Password: business123");
   console.log("  Email: jane@doemotors.com | Password: business123");
+  console.log("  Email: owner@thewheelhouse.com | Password: business123");
 }
 
 main()
