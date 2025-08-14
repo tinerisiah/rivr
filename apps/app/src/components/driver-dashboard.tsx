@@ -25,7 +25,7 @@ import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -145,15 +145,24 @@ export function DriverDashboard() {
   // Welcome animation
   const { showWelcome, completeWelcome } = useWelcomeAnimation();
 
+  // Guards to avoid re-running auth sync and route restore on every render
+  const didAuthSyncRef = useRef(false);
+  const didRestoreRef = useRef(false);
+
   // Check if user is authenticated through main auth system
   useEffect(() => {
-    if (isMainAuth && user && user.role === "driver") {
-      // User is authenticated through main auth system
-      setIsAuthenticated(true);
-      // Use user ID as driver ID
-      setDriverId(user.id.toString());
+    if (!isMainAuth || !user || user.role !== "driver") return;
 
-      // Check for saved route when driver logs back in
+    // Sync auth state only once per session
+    if (!didAuthSyncRef.current) {
+      didAuthSyncRef.current = true;
+      setIsAuthenticated(true);
+      setDriverId(user.id.toString());
+    }
+
+    // Restore route only once after auth
+    if (!didRestoreRef.current) {
+      didRestoreRef.current = true;
       const savedRoute = localStorage.getItem("activeRoute");
       if (savedRoute) {
         try {
@@ -167,8 +176,7 @@ export function DriverDashboard() {
                 "Your previous route has been restored. Continue completing tasks.",
             });
           }
-        } catch (error) {
-          // Error restoring route - continue without saved route
+        } catch {
           localStorage.removeItem("activeRoute");
         }
       }
@@ -308,7 +316,9 @@ export function DriverDashboard() {
           heartbeat = window.setInterval(() => {
             try {
               ws?.send(JSON.stringify({ type: "ping", t: Date.now() }));
-            } catch {}
+            } catch {
+              /* noop */
+            }
           }, 15000);
         };
         ws.onmessage = (ev) => {
@@ -347,20 +357,26 @@ export function DriverDashboard() {
                 }).catch(() => {});
               }, 3000);
             }
-          } catch {}
+          } catch {
+            /* noop */
+          }
         };
         ws.onclose = () => {
           if (heartbeat) window.clearInterval(heartbeat);
           heartbeat = null;
           // attempt reconnect
-          reconnectTimer = window.setTimeout(connect, 3000) as any;
+          reconnectTimer = window.setTimeout(connect, 3000);
         };
         ws.onerror = () => {
           try {
             ws?.close();
-          } catch {}
+          } catch {
+            /* noop */
+          }
         };
-      } catch {}
+      } catch {
+        /* noop */
+      }
     };
 
     connect();
@@ -369,7 +385,9 @@ export function DriverDashboard() {
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       try {
         ws?.close();
-      } catch {}
+      } catch {
+        /* noop */
+      }
     };
   }, [isAuthenticated, refetch, toast]);
 
@@ -462,7 +480,7 @@ export function DriverDashboard() {
     setTimeout(() => {
       try {
         openNavigation(addresses);
-      } catch (error) {
+      } catch {
         // Navigation error - provide fallback
         toast({
           title: "Navigation Ready",
@@ -508,7 +526,7 @@ export function DriverDashboard() {
           } else {
             localStorage.setItem("activeRoute", JSON.stringify(routeData));
           }
-        } catch (error) {
+        } catch {
           // Error updating route in localStorage
         }
       }
@@ -808,8 +826,8 @@ export function DriverDashboard() {
               <Card className="p-8 text-center">
                 <Route className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-muted-foreground">
-                  No tasks in route. Select tasks from "Available Tasks" to get
-                  started.
+                  No tasks in route. Select tasks from &quot;Available
+                  Tasks&quot; to get started.
                 </p>
               </Card>
             ) : (
@@ -918,7 +936,7 @@ export function DriverDashboard() {
                                     JSON.stringify(routeData)
                                   );
                                 }
-                              } catch (error) {
+                              } catch {
                                 // Error updating route in localStorage
                               }
                             }
