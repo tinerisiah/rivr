@@ -37,6 +37,8 @@ export function middleware(request: NextRequest) {
     return res;
   }
 
+  console.log("subdomain", subdomain);
+
   // Handle business subdomains
   if (subdomain && subdomain !== "www" && subdomain !== "localhost") {
     // Validate subdomain format (alphanumeric and hyphens only)
