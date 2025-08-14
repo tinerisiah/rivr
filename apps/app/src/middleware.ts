@@ -18,6 +18,7 @@ export function middleware(request: NextRequest) {
     }
 
     console.log("host", host);
+    console.log("baseDomain", baseDomain);
 
     if (host.endsWith(`.${baseDomain}`)) {
       const withoutBase = host.slice(0, -`.${baseDomain}`.length);
