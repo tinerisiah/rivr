@@ -17,6 +17,8 @@ export function middleware(request: NextRequest) {
       return parts.length > 1 ? parts[0] : null;
     }
 
+    console.log("host", host);
+
     if (host.endsWith(`.${baseDomain}`)) {
       const withoutBase = host.slice(0, -`.${baseDomain}`.length);
       return withoutBase || null;
