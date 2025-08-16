@@ -55,6 +55,7 @@ export interface JWTPayload {
   driverId?: number;
   iat?: number;
   exp?: number;
+  name?: string;
 }
 
 export interface RefreshTokenPayload {

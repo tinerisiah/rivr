@@ -104,6 +104,8 @@ export function LoginForm({
     }
   };
 
+  const { subdomain } = useTenant();
+
   const title =
     type === "business"
       ? "Business Login"
@@ -208,7 +210,7 @@ export function LoginForm({
             )}
           </Button>
 
-          {type === "business" && onSwitchToRegister && (
+          {!subdomain && type === "business" && onSwitchToRegister && (
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
                 Don't have an account?{" "}

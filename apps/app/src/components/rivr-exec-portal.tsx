@@ -729,20 +729,6 @@ export function RivrExecPortal() {
                                   </div>
                                 </div>
                               </div>
-
-                              <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-                                <Button
-                                  onClick={() =>
-                                    copyToClipboard(customer.accessToken)
-                                  }
-                                  variant="outline"
-                                  size="sm"
-                                  className="border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white text-xs"
-                                >
-                                  <Copy className="w-3 h-3 mr-1" />
-                                  Copy Link
-                                </Button>
-                              </div>
                             </div>
                           </div>
                         );

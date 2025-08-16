@@ -86,7 +86,7 @@ export function DriversTab({
                   {drivers.map((driver: Driver) => (
                     <tr key={driver.id} className="border-b border-border">
                       <td className="py-4 px-4">
-                        <Badge className="bg-blue-100 text-blue-800 font-mono">
+                        <Badge className="bg-primary/10 text-primary font-mono whitespace-nowrap">
                           ID: {driver.id}
                         </Badge>
                       </td>

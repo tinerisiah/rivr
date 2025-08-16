@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/dialog";
 import { Upload, X, Check, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { updateBusinessSettings } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface LogoUploadProps {
   onLogoChange: (logoUrl: string | null) => void;
@@ -26,7 +28,9 @@ export default function LogoUpload({
     currentLogo || null
   );
   const [isDragging, setIsDragging] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const handleFileSelect = (file: File) => {
     if (file && file.type.startsWith("image/")) {
@@ -65,19 +69,63 @@ export default function LogoUpload({
     setIsDragging(false);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (previewUrl) {
-      localStorage.setItem("customLogo", previewUrl);
-      onLogoChange(previewUrl);
+      setIsSaving(true);
+      try {
+        await updateBusinessSettings({ customLogo: previewUrl });
+        
+        // Also save to localStorage as fallback
+        localStorage.setItem("customLogo", previewUrl);
+        
+        onLogoChange(previewUrl);
+        setIsOpen(false);
+        
+        toast({
+          title: "Logo Updated",
+          description: "Your business logo has been updated successfully.",
+          variant: "default",
+        });
+      } catch (error) {
+        console.error("Failed to update logo:", error);
+        toast({
+          title: "Update Failed",
+          description: "Failed to update logo. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSaving(false);
+      }
     }
-    setIsOpen(false);
   };
 
-  const handleRemove = () => {
-    setPreviewUrl(null);
-    localStorage.removeItem("customLogo");
-    onLogoChange(null);
-    setIsOpen(false);
+  const handleRemove = async () => {
+    setIsSaving(true);
+    try {
+      await updateBusinessSettings({ customLogo: null });
+      
+      // Also remove from localStorage
+      localStorage.removeItem("customLogo");
+      
+      setPreviewUrl(null);
+      onLogoChange(null);
+      setIsOpen(false);
+      
+      toast({
+        title: "Logo Removed",
+        description: "Your business logo has been removed.",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Failed to remove logo:", error);
+      toast({
+        title: "Removal Failed",
+        description: "Failed to remove logo. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleReset = () => {
@@ -162,7 +210,7 @@ export default function LogoUpload({
           <div className="flex justify-between">
             <div className="flex gap-2">
               {currentLogo && (
-                <Button variant="outline" size="sm" onClick={handleReset}>
+                <Button variant="outline" size="sm" onClick={handleReset} disabled={isSaving}>
                   Reset
                 </Button>
               )}
@@ -171,6 +219,7 @@ export default function LogoUpload({
                   variant="outline"
                   size="sm"
                   onClick={() => setPreviewUrl(null)}
+                  disabled={isSaving}
                 >
                   Clear
                 </Button>
@@ -178,14 +227,23 @@ export default function LogoUpload({
             </div>
             <div className="flex gap-2">
               {currentLogo && (
-                <Button variant="destructive" size="sm" onClick={handleRemove}>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={handleRemove}
+                  disabled={isSaving}
+                >
                   <X className="w-4 h-4 mr-2" />
-                  Remove Logo
+                  {isSaving ? "Removing..." : "Remove Logo"}
                 </Button>
               )}
-              <Button onClick={handleSave} disabled={!previewUrl} size="sm">
+              <Button 
+                onClick={handleSave} 
+                disabled={!previewUrl || isSaving} 
+                size="sm"
+              >
                 <Check className="w-4 h-4 mr-2" />
-                Save Logo
+                {isSaving ? "Saving..." : "Save Logo"}
               </Button>
             </div>
           </div>

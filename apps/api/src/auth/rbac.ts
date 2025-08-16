@@ -76,12 +76,10 @@ export function requireTenantMatch() {
       typeof requestTenant === "number" &&
       tokenTenant !== requestTenant
     ) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Token does not belong to this tenant",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Token does not belong to this tenant",
+      });
     }
     return next();
   };

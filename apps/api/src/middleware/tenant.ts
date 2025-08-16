@@ -4,6 +4,7 @@ import { businesses } from "@repo/schema";
 import { eq, or } from "drizzle-orm";
 import { log } from "@repo/logger";
 import { provisionTenantSchema } from "../lib/tenant-db";
+import { verifyToken } from "../auth";
 
 function getHostWithoutPort(hostHeader: string | undefined): string | null {
   if (!hostHeader) return null;
@@ -41,6 +42,28 @@ export async function tenantMiddleware(
     ]);
     if (publicPaths.has(req.path)) {
       return next();
+    }
+
+    if (req.path.startsWith("/api/public/business-settings")) {
+      return next();
+    }
+
+    // Admin endpoints: if caller is a verified RIVR admin, bypass tenant resolution
+    if (
+      req.path.startsWith("/api/admin") ||
+      req.path.startsWith("/api/analytics/platform")
+    ) {
+      const authHeader = req.headers.authorization;
+      const token = authHeader && authHeader.split(" ")[1];
+      if (token) {
+        const payload = verifyToken(token);
+        if (payload?.role === "rivr_admin") {
+          // Treat admin requests as exec-scope without binding to a tenant
+          (req as any).tenant = "rivr_exec";
+          (req as any).businessId = undefined;
+          return next();
+        }
+      }
     }
 
     const baseDomain = process.env.BASE_DOMAIN?.toLowerCase();

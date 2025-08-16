@@ -825,7 +825,7 @@ export function registerAdminRoutes(app: Express) {
   app.get(
     "/api/admin/email-templates",
     authenticateToken,
-    requirePermission("admin:read"),
+    requirePermission("business:read"),
     async (req, res) => {
       try {
         const storage = getStorage(req);
@@ -843,14 +843,104 @@ export function registerAdminRoutes(app: Express) {
     }
   );
 
-  app.get(
-    "/api/admin/email-logs",
+  app.post(
+    "/api/admin/email-templates",
     authenticateToken,
-    requirePermission("admin:read"),
+    requirePermission("business:write"),
     async (req, res) => {
       try {
         const storage = getStorage(req);
-        const logs = await storage.getEmailLogs();
+        const { insertEmailTemplateSchema } = await import("@repo/schema");
+        const templateData = insertEmailTemplateSchema.parse(req.body);
+        const template = await storage.createEmailTemplate(templateData);
+        res.json({
+          success: true,
+          template,
+          message: "Email template created",
+        });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid template data",
+            errors: error.errors,
+          });
+        }
+        log("error", "Failed to create email template", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({
+          success: false,
+          message: "Failed to create email template",
+        });
+      }
+    }
+  );
+
+  app.put(
+    "/api/admin/email-templates/:id",
+    authenticateToken,
+    requirePermission("business:write"),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        if (Number.isNaN(id)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid template id" });
+        }
+        const updateSchema = z
+          .object({
+            subject: z.string().min(1).optional(),
+            bodyTemplate: z.string().min(1).optional(),
+            isActive: z.boolean().optional(),
+            templateType: z.string().optional(),
+          })
+          .refine((v) => Object.keys(v).length > 0, {
+            message: "At least one field is required",
+          });
+        const updates = updateSchema.parse(req.body);
+        const storage = getStorage(req);
+        const template = await storage.updateEmailTemplate(id, updates as any);
+        if (!template) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Template not found" });
+        }
+        res.json({ success: true, template, message: "Template updated" });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid template update",
+            errors: error.errors,
+          });
+        }
+        log("error", "Failed to update email template", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({
+          success: false,
+          message: "Failed to update email template",
+        });
+      }
+    }
+  );
+
+  app.get(
+    "/api/admin/email-logs",
+    authenticateToken,
+    requirePermission("business:read"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const customerId = req.query.customerId
+          ? Number(req.query.customerId)
+          : undefined;
+        const pickupRequestId = req.query.pickupRequestId
+          ? Number(req.query.pickupRequestId)
+          : undefined;
+        const logs = await storage.getEmailLogs(customerId, pickupRequestId);
         res.json({ success: true, logs });
       } catch (error) {
         log("error", "Failed to fetch email logs", {
@@ -859,6 +949,86 @@ export function registerAdminRoutes(app: Express) {
         res.status(500).json({
           success: false,
           message: "Failed to fetch email logs",
+        });
+      }
+    }
+  );
+
+  // Business settings routes
+  app.get(
+    "/api/admin/business-settings",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("business:read"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const businessId = (req as any).businessId;
+
+        if (!businessId) {
+          return res.status(400).json({
+            success: false,
+            message: "Business ID is required",
+          });
+        }
+
+        const settings = await storage.getBusinessSettings(businessId);
+        return res.json({ success: true, settings });
+      } catch (error) {
+        log("error", "Failed to fetch business settings", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({
+          success: false,
+          message: "Failed to fetch business settings",
+        });
+      }
+    }
+  );
+
+  app.put(
+    "/api/admin/business-settings",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("business:write"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const businessId = (req as any).businessId;
+
+        if (!businessId) {
+          return res.status(400).json({
+            success: false,
+            message: "Business ID is required",
+          });
+        }
+
+        const {
+          customLogo,
+          customBranding,
+          emailSettings,
+          notificationSettings,
+        } = req.body;
+
+        const settings = await storage.upsertBusinessSettings(businessId, {
+          customLogo,
+          customBranding,
+          emailSettings,
+          notificationSettings,
+        });
+
+        res.json({
+          success: true,
+          settings,
+          message: "Business settings updated successfully",
+        });
+      } catch (error) {
+        log("error", "Failed to update business settings", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res.status(500).json({
+          success: false,
+          message: "Failed to update business settings",
         });
       }
     }

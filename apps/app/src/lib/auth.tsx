@@ -20,6 +20,7 @@ export interface User {
   subdomain?: string;
   role: "business_owner" | "rivr_admin" | "driver";
   tenantId?: number;
+  name?: string;
 }
 
 export interface AuthResponse {

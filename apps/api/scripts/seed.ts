@@ -33,11 +33,17 @@ async function clearData(mode: Mode): Promise<void> {
     await db.execute("DELETE FROM pickup_requests");
     await db.execute("DELETE FROM quote_requests");
     await db.execute("DELETE FROM customers");
+    // Email automation log references pickup requests and customers
+    await db.execute("DELETE FROM email_automation_log");
   }
   await db.execute("DELETE FROM driver_messages");
   await db.execute("DELETE FROM driver_status_updates");
   await db.execute("DELETE FROM drivers");
   await db.execute("DELETE FROM rivr_admins");
+  // Platform-level tables that reference businesses must be cleared before businesses
+  await db.execute("DELETE FROM business_settings");
+  await db.execute("DELETE FROM business_analytics");
+  await db.execute("DELETE FROM refresh_tokens");
   await db.execute("DELETE FROM businesses");
   await db.execute("DELETE FROM users");
 }

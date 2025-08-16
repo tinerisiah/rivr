@@ -10,6 +10,15 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function readBrowserCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.split("=")[1]) : null;
+}
+
 function computeTenantSubdomain(): string | undefined {
   if (typeof window === "undefined") return undefined;
 
@@ -63,6 +72,13 @@ export async function apiRequest(
   if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
   if (data !== undefined) headers["Content-Type"] = "application/json";
 
+  // Fallback header for customer session when httpOnly cookie isn't recognized
+  // (we set a readable cookie after POST to ensure continuity in dev/local)
+  if (typeof window !== "undefined") {
+    const customerToken = readBrowserCookie("customer_token");
+    if (customerToken) headers["X-Customer-Token"] = customerToken;
+  }
+
   const res = await fetch(fullUrl, {
     method,
     headers,
@@ -92,6 +108,10 @@ export const getQueryFn: <T>(options: {
     const headers: Record<string, string> = {};
     if (tenant) headers["X-Tenant-Subdomain"] = tenant;
     if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+    if (typeof window !== "undefined") {
+      const customerToken = readBrowserCookie("customer_token");
+      if (customerToken) headers["X-Customer-Token"] = customerToken;
+    }
 
     const res = await fetch(fullUrl, {
       credentials: "include",

@@ -6,7 +6,6 @@ import { CustomersTab } from "@/components/admin/customers-tab";
 import { DriversTab } from "@/components/admin/drivers-tab";
 import { OverviewTab } from "@/components/admin/overview-tab";
 import { ProductionTab } from "@/components/admin/production-tab";
-import { QuotesTab } from "@/components/admin/quotes-tab";
 import { SettingsTab } from "@/components/admin/settings-tab";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,12 +23,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import WelcomeAnimation, {
   useWelcomeAnimation,
 } from "@/components/welcome-animation";
 import { useToast } from "@/hooks/use-toast";
+import { API_BASE_URL } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type {
@@ -41,12 +41,11 @@ import type {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { API_BASE_URL } from "@/lib/api";
 
 // Form schemas
 const customerFormSchema = z.object({
@@ -73,6 +72,10 @@ const deliverPickupSchema = z.object({
 const driverFormSchema = z.object({
   name: z.string().min(1, "Driver name is required"),
   email: z.string().email("Please enter a valid email address"),
+  password: z
+    .string()
+    .min(6, "Password must be at least 6 characters")
+    .optional(),
   phone: z.string().optional(),
   licenseNumber: z.string().optional(),
 });
@@ -227,6 +230,7 @@ export function AdminPanelRefactored({
     defaultValues: {
       name: "",
       email: "",
+      password: "",
       phone: "",
       licenseNumber: "",
     },
@@ -237,6 +241,7 @@ export function AdminPanelRefactored({
     defaultValues: {
       name: "",
       email: "",
+      password: "",
       phone: "",
       licenseNumber: "",
     },
@@ -279,6 +284,79 @@ export function AdminPanelRefactored({
   const { data: emailLogsData, isLoading: loadingEmailLogs } = useQuery({
     queryKey: ["/api/admin/email-logs"],
     enabled: showEmailLogsModal,
+  });
+
+  const createTemplateMutation = useMutation({
+    mutationFn: async (payload: {
+      templateType: string;
+      subject: string;
+      bodyTemplate: string;
+      isActive?: boolean;
+    }) => {
+      const res = await apiRequest(
+        "POST",
+        "/api/admin/email-templates",
+        payload
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/email-templates"],
+      });
+      toast({
+        title: "Template Created",
+        description: "Email template saved.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save template",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateTemplateMutation = useMutation({
+    mutationFn: async (payload: {
+      id: number;
+      subject?: string;
+      bodyTemplate?: string;
+      isActive?: boolean;
+      templateType?: string;
+    }) => {
+      const { id, ...updates } = payload;
+      const res = await apiRequest(
+        "PUT",
+        `/api/admin/email-templates/${id}`,
+        updates
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/email-templates"],
+      });
+      toast({
+        title: "Template Updated",
+        description: "Email template updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update template",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const [newTemplate, setNewTemplate] = useState({
+    templateType: "pending",
+    subject: "",
+    bodyTemplate: "",
+    isActive: true,
   });
 
   // const { data: businessesData, isLoading: loadingBusinesses } = useQuery({
@@ -638,6 +716,7 @@ export function AdminPanelRefactored({
     editDriverForm.reset({
       name: driver.name,
       email: driver.email,
+      password: "",
       phone: driver.phone || "",
       licenseNumber: driver.licenseNumber || "",
     });
@@ -874,19 +953,19 @@ export function AdminPanelRefactored({
         />
       ),
     },
-    {
-      value: "quotes",
-      label: "Quotes",
-      hiddenOnMobile: true,
-      content: (
-        <QuotesTab
-          quoteRequests={quoteRequests}
-          loadingQuoteRequests={loadingQuoteRequests}
-          onViewQuoteDetails={handleViewQuoteDetails}
-          onQuoteReply={handleQuoteReply}
-        />
-      ),
-    },
+    // {
+    //   value: "quotes",
+    //   label: "Quotes",
+    //   hiddenOnMobile: true,
+    //   content: (
+    //     <QuotesTab
+    //       quoteRequests={quoteRequests}
+    //       loadingQuoteRequests={loadingQuoteRequests}
+    //       onViewQuoteDetails={handleViewQuoteDetails}
+    //       onQuoteReply={handleQuoteReply}
+    //     />
+    //   ),
+    // },
     {
       value: "settings",
       label: "Settings",
@@ -916,7 +995,7 @@ export function AdminPanelRefactored({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="space-y-6 sm:space-y-8"
+          className="space-y-6 sm:space-y-8 p-4"
         >
           {/* Header */}
           <AdminHeader
@@ -1291,6 +1370,30 @@ export function AdminPanelRefactored({
 
               <FormField
                 control={driverForm.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-muted-foreground">
+                      Temporary Password
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="Set a password"
+                        {...field}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Optional. If omitted, driver should set their password via
+                      registration link.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={driverForm.control}
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
@@ -1394,6 +1497,30 @@ export function AdminPanelRefactored({
                         {...field}
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editDriverForm.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-muted-foreground">
+                      Reset Password
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="Leave blank to keep current"
+                        {...field}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Provide a new password to reset. Leave empty to keep the
+                      existing password.
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1652,6 +1779,218 @@ export function AdminPanelRefactored({
                 Cancel
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Templates Modal */}
+      <Dialog
+        open={showEmailTemplatesModal}
+        onOpenChange={setShowEmailTemplatesModal}
+      >
+        <DialogContent className="max-w-3xl w-full max-h-[90vh] overflow-y-auto bg-popover border border-border shadow-sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-foreground mb-2">
+              Manage Email Templates
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="border rounded-md p-3">
+              <h4 className="font-medium mb-2">Create Template</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-muted-foreground">Type</label>
+                  <select
+                    className="w-full border rounded-md p-2 bg-background"
+                    value={newTemplate.templateType}
+                    onChange={(e) =>
+                      setNewTemplate((t) => ({
+                        ...t,
+                        templateType: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="pending">pending</option>
+                    <option value="in_process">in_process</option>
+                    <option value="ready_for_delivery">
+                      ready_for_delivery
+                    </option>
+                    <option value="ready_to_bill">ready_to_bill</option>
+                    <option value="billed">billed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm text-muted-foreground">
+                    Subject
+                  </label>
+                  <input
+                    className="w-full border rounded-md p-2 bg-background"
+                    value={newTemplate.subject}
+                    onChange={(e) =>
+                      setNewTemplate((t) => ({ ...t, subject: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-sm text-muted-foreground">Body</label>
+                  <textarea
+                    className="w-full border rounded-md p-2 bg-background min-h-[120px]"
+                    value={newTemplate.bodyTemplate}
+                    onChange={(e) =>
+                      setNewTemplate((t) => ({
+                        ...t,
+                        bodyTemplate: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="tmpl-active"
+                    type="checkbox"
+                    checked={newTemplate.isActive}
+                    onChange={(e) =>
+                      setNewTemplate((t) => ({
+                        ...t,
+                        isActive: e.target.checked,
+                      }))
+                    }
+                  />
+                  <label htmlFor="tmpl-active" className="text-sm">
+                    Active
+                  </label>
+                </div>
+                <div className="sm:col-span-2 text-right">
+                  <Button
+                    size="sm"
+                    onClick={() => createTemplateMutation.mutate(newTemplate)}
+                    disabled={!newTemplate.subject || !newTemplate.bodyTemplate}
+                  >
+                    Save Template
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="border rounded-md p-3">
+              <h4 className="font-medium mb-2">Existing Templates</h4>
+              <div className="space-y-3">
+                {loadingEmailTemplates ? (
+                  <div>Loading templates…</div>
+                ) : (
+                  (emailTemplatesData?.templates || []).map((tpl: any) => (
+                    <div key={tpl.id} className="border rounded p-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-sm text-muted-foreground">
+                            Type
+                          </label>
+                          <input
+                            className="w-full border rounded-md p-2 bg-muted"
+                            value={tpl.templateType}
+                            disabled
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground">
+                            Subject
+                          </label>
+                          <input
+                            className="w-full border rounded-md p-2 bg-background"
+                            defaultValue={tpl.subject}
+                            onBlur={(e) =>
+                              updateTemplateMutation.mutate({
+                                id: tpl.id,
+                                subject: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="text-sm text-muted-foreground">
+                            Body
+                          </label>
+                          <textarea
+                            className="w-full border rounded-md p-2 bg-background min-h-[120px]"
+                            defaultValue={tpl.bodyTemplate}
+                            onBlur={(e) =>
+                              updateTemplateMutation.mutate({
+                                id: tpl.id,
+                                bodyTemplate: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            id={`active-${tpl.id}`}
+                            type="checkbox"
+                            defaultChecked={tpl.isActive}
+                            onChange={(e) =>
+                              updateTemplateMutation.mutate({
+                                id: tpl.id,
+                                isActive: e.target.checked,
+                              })
+                            }
+                          />
+                          <label
+                            htmlFor={`active-${tpl.id}`}
+                            className="text-sm"
+                          >
+                            Active
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Logs Modal */}
+      <Dialog open={showEmailLogsModal} onOpenChange={setShowEmailLogsModal}>
+        <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto bg-popover border border-border shadow-sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-foreground mb-2">
+              Email Logs
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-auto">
+            {loadingEmailLogs ? (
+              <div className="p-4">Loading logs…</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b border-border">
+                    <th className="p-2">Sent At</th>
+                    <th className="p-2">Template</th>
+                    <th className="p-2">Recipient</th>
+                    <th className="p-2">Subject</th>
+                    <th className="p-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(emailLogsData?.logs || []).map((log: any) => (
+                    <tr key={log.id} className="border-b border-border">
+                      <td className="p-2 whitespace-nowrap">
+                        {new Date(log.sentAt || log.sent_at).toLocaleString()}
+                      </td>
+                      <td className="p-2 whitespace-nowrap">
+                        {log.templateType || log.template_type}
+                      </td>
+                      <td className="p-2 whitespace-nowrap">
+                        {log.recipientEmail || log.recipient_email}
+                      </td>
+                      <td className="p-2">{log.subject}</td>
+                      <td className="p-2 whitespace-nowrap">{log.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </DialogContent>
       </Dialog>

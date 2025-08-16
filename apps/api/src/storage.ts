@@ -15,6 +15,7 @@ import {
   driverMessages,
   driverStatusUpdates,
   businesses,
+  businessSettings,
   rivrAdmins,
   businessAnalytics,
   emailTemplates,
@@ -26,6 +27,7 @@ import {
   type Route,
   type RouteStop,
   type Business,
+  type BusinessSettings,
   type InsertCustomer,
   type InsertPickupRequest,
   type InsertQuoteRequest,
@@ -33,6 +35,7 @@ import {
   type InsertRoute,
   type InsertRouteStop,
   type InsertBusiness,
+  type InsertBusinessSettings,
   type InsertRivrAdmin,
   type InsertBusinessAnalytics,
   type InsertEmailTemplate,
@@ -40,6 +43,7 @@ import {
 } from "@repo/schema";
 import { eq, and, desc, asc, isNull, isNotNull, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { hashPassword } from "./auth";
 
 class Storage {
   private readonly tenantContext: TenantContext;
@@ -144,6 +148,18 @@ class Storage {
     );
   }
 
+  async getPickupRequestsByCustomerId(
+    customerId: number
+  ): Promise<PickupRequest[]> {
+    return this.withDb(async (dbc) =>
+      dbc
+        .select()
+        .from(pickupRequests)
+        .where(eq(pickupRequests.customerId, customerId))
+        .orderBy(desc(pickupRequests.createdAt))
+    );
+  }
+
   async getPickupRequest(id: number): Promise<PickupRequest | null> {
     return this.withDb(async (dbc) => {
       const [request] = await dbc
@@ -206,6 +222,7 @@ class Storage {
     deliveryData: {
       deliveryNotes?: string;
       deliveryQrCodes: string[];
+      deliveryPhoto?: string;
     }
   ): Promise<PickupRequest | null> {
     return this.withDb(async (dbc) => {
@@ -227,9 +244,50 @@ class Storage {
     status: string
   ): Promise<PickupRequest | null> {
     return this.withDb(async (dbc) => {
+      const now = new Date();
+      const timeline: any = { productionStatus: status as any };
+      if (status === "in_process") timeline.inProcessAt = now;
+      if (status === "ready_for_delivery") timeline.readyForDeliveryAt = now;
+      if (status === "ready_to_bill") timeline.readyToBillAt = now;
       const [request] = await dbc
         .update(pickupRequests)
-        .set({ productionStatus: status as any })
+        .set(timeline)
+        .where(eq(pickupRequests.id, id))
+        .returning();
+      return request || null;
+    });
+  }
+
+  async updatePickupRequestByCustomer(
+    id: number,
+    customerId: number,
+    updates: Partial<{
+      roNumber?: string;
+      customerNotes?: string;
+      address?: string;
+    }>
+  ): Promise<PickupRequest | null> {
+    return this.withDb(async (dbc) => {
+      const [existing] = await dbc
+        .select()
+        .from(pickupRequests)
+        .where(eq(pickupRequests.id, id));
+      if (!existing) return null;
+      // Only allow update by the owning customer and when not completed/archived
+      if (
+        existing.customerId !== customerId ||
+        existing.isCompleted ||
+        existing.isArchived
+      ) {
+        return null;
+      }
+      const [request] = await dbc
+        .update(pickupRequests)
+        .set({
+          roNumber: updates.roNumber ?? existing.roNumber,
+          customerNotes: updates.customerNotes ?? existing.customerNotes,
+          address: updates.address ?? existing.address,
+        })
         .where(eq(pickupRequests.id, id))
         .returning();
       return request || null;
@@ -324,7 +382,20 @@ class Storage {
   // Driver operations
   async createDriver(data: InsertDriver): Promise<Driver> {
     return this.withDb(async (dbc) => {
-      const [driver] = await dbc.insert(drivers).values(data).returning();
+      const values: InsertDriver = { ...data } as InsertDriver;
+      if (
+        values &&
+        typeof (values as any).password === "string" &&
+        (values as any).password.trim().length > 0
+      ) {
+        (values as any).password = await hashPassword(
+          (values as any).password as unknown as string
+        );
+      }
+      const [driver] = await dbc
+        .insert(drivers)
+        .values(values as any)
+        .returning();
       return driver;
     });
   }
@@ -362,9 +433,18 @@ class Storage {
     updates: Partial<InsertDriver>
   ): Promise<Driver | null> {
     return this.withDb(async (dbc) => {
+      const nextUpdates: Partial<InsertDriver> = { ...updates };
+      if (
+        typeof (nextUpdates as any).password === "string" &&
+        (nextUpdates as any).password!.trim().length > 0
+      ) {
+        (nextUpdates as any).password = await hashPassword(
+          (nextUpdates as any).password as unknown as string
+        );
+      }
       const [driver] = await dbc
         .update(drivers)
-        .set(updates)
+        .set(nextUpdates as any)
         .where(eq(drivers.id, id))
         .returning();
       return driver || null;
@@ -644,6 +724,56 @@ class Storage {
       .where(eq(businesses.id, id))
       .returning();
     return business || null;
+  }
+
+  // Business settings operations
+  async getBusinessSettings(
+    businessId: number
+  ): Promise<BusinessSettings | null> {
+    const [settings] = await db
+      .select()
+      .from(businessSettings)
+      .where(eq(businessSettings.businessId, businessId));
+    return settings || null;
+  }
+
+  async createBusinessSettings(
+    data: InsertBusinessSettings
+  ): Promise<BusinessSettings> {
+    const [settings] = await db
+      .insert(businessSettings)
+      .values(data)
+      .returning();
+    return settings;
+  }
+
+  async updateBusinessSettings(
+    businessId: number,
+    updates: Partial<InsertBusinessSettings>
+  ): Promise<BusinessSettings | null> {
+    const [settings] = await db
+      .update(businessSettings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(businessSettings.businessId, businessId))
+      .returning();
+    return settings || null;
+  }
+
+  async upsertBusinessSettings(
+    businessId: number,
+    data: Partial<InsertBusinessSettings>
+  ): Promise<BusinessSettings> {
+    // Try to update first, if no rows affected, insert
+    const updated = await this.updateBusinessSettings(businessId, data);
+    if (updated) {
+      return updated;
+    }
+
+    // If no existing settings, create new ones
+    return this.createBusinessSettings({
+      businessId,
+      ...data,
+    });
   }
 
   // Email operations

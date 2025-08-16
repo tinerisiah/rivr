@@ -100,3 +100,41 @@ export async function authenticatedApiRequest(
 
   return data;
 }
+
+// Business settings API functions
+export async function getBusinessSettings(): Promise<any> {
+  return authenticatedApiRequest("/api/admin/business-settings");
+}
+
+export async function updateBusinessSettings(settings: {
+  customLogo?: string | null;
+  customBranding?: string | null;
+  emailSettings?: string | null;
+  notificationSettings?: string | null;
+}): Promise<any> {
+  return authenticatedApiRequest("/api/admin/business-settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+}
+
+// Public business settings API function
+export async function getPublicBusinessSettings(
+  subdomain: string
+): Promise<any> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/public/business-settings/${subdomain}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}

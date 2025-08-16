@@ -188,4 +188,17 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
       updated_at timestamp DEFAULT now() NOT NULL
     );
   `);
+
+  // Business settings table for tenant-specific configuration
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS ${schemaName}.business_settings (
+      id serial PRIMARY KEY,
+      custom_logo text,
+      custom_branding text,
+      email_settings text,
+      notification_settings text,
+      created_at timestamp DEFAULT now() NOT NULL,
+      updated_at timestamp DEFAULT now() NOT NULL
+    );
+  `);
 }

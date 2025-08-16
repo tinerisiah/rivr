@@ -90,16 +90,6 @@ export function middleware(request: NextRequest) {
       return res;
     }
 
-    // Default business landing
-    if (path === "/") {
-      const res = NextResponse.redirect(new URL("/business", request.url));
-      res.cookies.set("tenant_subdomain", subdomain, {
-        path: "/",
-        sameSite: "lax",
-      });
-      return res;
-    }
-
     // Default: set cookie and continue
     const res = NextResponse.next();
     res.cookies.set("tenant_subdomain", subdomain, {

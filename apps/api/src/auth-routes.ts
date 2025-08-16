@@ -19,10 +19,15 @@ import {
 import { generateMfaSecretForUser, verifyMfaToken } from "./auth";
 import { log } from "@repo/logger";
 import { getStorage } from "./storage";
-import { provisionTenantSchema, withTenantDb } from "./lib/tenant-db";
+import {
+  provisionTenantSchema,
+  withTenantDb,
+  getTenantContextFromRequest,
+} from "./lib/tenant-db";
 import { db } from "./db";
 import { refreshTokens, rivrAdmins, users, drivers } from "@repo/schema";
 import { eq } from "drizzle-orm";
+import { hashPassword } from "./auth";
 import { createBusinessVerificationEmail } from "./email-utils";
 
 export function registerAuthRoutes(app: Express) {
@@ -322,6 +327,7 @@ export function registerAuthRoutes(app: Express) {
           tenantId: req.user.tenantId,
           businessName: req.user.businessName,
           subdomain: req.user.subdomain,
+          name: req.user.name,
         },
       });
     } catch (error) {
@@ -507,6 +513,128 @@ export function registerAuthRoutes(app: Express) {
   );
 
   // Driver authentication
+  app.post("/api/auth/driver/register", async (req, res) => {
+    try {
+      const { tenant, businessId } = getTenantContextFromRequest(req as any);
+      if (!tenant || !businessId) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Unknown tenant for registration" });
+      }
+
+      const driverRegisterSchema = z.object({
+        name: z.string().min(1, "Name is required"),
+        email: z.string().email("Invalid email"),
+        password: z.string().min(6, "Password must be at least 6 characters"),
+        phone: z.string().optional(),
+        licenseNumber: z.string().optional(),
+      });
+
+      const payload = driverRegisterSchema.parse(req.body);
+
+      // Ensure unique email per tenant
+      const existing = await withTenantDb(req as any, async (tx) => {
+        const rows = await tx
+          .select()
+          .from(drivers)
+          .where(eq(drivers.email, payload.email))
+          .limit(1);
+        return rows[0];
+      });
+
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          message: "Driver with this email already exists",
+        });
+      }
+
+      const hashed = await hashPassword(payload.password);
+
+      const created = await withTenantDb(req as any, async (tx) => {
+        const [row] = await tx
+          .insert(drivers)
+          .values({
+            name: payload.name,
+            email: payload.email,
+            phone: payload.phone,
+            licenseNumber: payload.licenseNumber,
+            password: hashed,
+            status: "available",
+            isActive: true,
+          } as any)
+          .returning();
+        return row;
+      });
+
+      // Auto-login newly registered driver
+      const accessToken = generateAccessToken({
+        userId: created.id,
+        email: created.email,
+        role: "driver",
+        driverId: created.id,
+        tenantId: businessId,
+        name: created.name,
+      });
+      const refreshTokenId = `drv_${created.id}_${Date.now()}`;
+      const refreshToken = generateRefreshToken({
+        userId: created.id,
+        email: created.email,
+        role: "driver",
+        tokenId: refreshTokenId,
+        tenantId: businessId,
+      });
+
+      await db
+        .insert(refreshTokens)
+        .values({
+          tokenId: refreshTokenId,
+          userId: created.id,
+          role: "driver",
+          tenantId: businessId,
+        })
+        .returning();
+
+      res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      const nameParts = String(created.name || "").split(" ");
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.slice(1).join(" ") || "";
+
+      return res.status(201).json({
+        success: true,
+        message: "Driver registered successfully",
+        user: {
+          id: created.id,
+          email: created.email,
+          firstName,
+          lastName,
+          role: "driver",
+        },
+        accessToken,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid registration data",
+          errors: error.errors,
+        });
+      }
+      log("error", "Driver registration failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res
+        .status(500)
+        .json({ success: false, message: "Registration failed" });
+    }
+  });
+
   app.post("/api/auth/driver/login", async (req, res) => {
     try {
       const { email, password } = loginSchema.parse(req.body);
@@ -555,6 +683,7 @@ export function registerAuthRoutes(app: Express) {
         role: "driver",
         driverId: driver.id,
         tenantId: (req as any).businessId,
+        name: driver.name,
       });
 
       // Generate refresh token

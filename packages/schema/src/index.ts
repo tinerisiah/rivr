@@ -99,6 +99,28 @@ export const businesses = pgTable(
   })
 );
 
+// Business settings table for tenant-specific configuration
+export const businessSettings = pgTable(
+  "business_settings",
+  {
+    id: serial("id").primaryKey(),
+    businessId: integer("business_id")
+      .notNull()
+      .references(() => businesses.id),
+    customLogo: text("custom_logo"), // URL or base64 data for the logo
+    customBranding: text("custom_branding"), // JSON string for additional branding
+    emailSettings: text("email_settings"), // JSON string for email preferences
+    notificationSettings: text("notification_settings"), // JSON string for notification preferences
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessIdIdx: uniqueIndex("business_settings_business_id_idx").on(
+      table.businessId
+    ),
+  })
+);
+
 // RIVR platform admin users (your executive portal users)
 export const rivrAdmins = pgTable(
   "rivr_admins",
@@ -211,6 +233,12 @@ export const pickupRequests = pgTable(
     employeeName: text("employee_name"),
     roNumber: text("ro_number"),
     customerNotes: text("customer_notes"),
+    // Additional production timeline fields
+    inProcessAt: timestamp("in_process_at"),
+    readyForDeliveryAt: timestamp("ready_for_delivery_at"),
+    readyToBillAt: timestamp("ready_to_bill_at"),
+    // Delivery completion photo
+    deliveryPhoto: text("delivery_photo"),
     wheelQrCodes: text("wheel_qr_codes").array().default([]),
     isDelivered: boolean("is_delivered").default(false).notNull(),
     deliveredAt: timestamp("delivered_at"),
@@ -524,6 +552,14 @@ export const insertEmailLogSchema = createInsertSchema(emailAutomationLog).omit(
   }
 );
 
+export const insertBusinessSettingsSchema = createInsertSchema(
+  businessSettings
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Type exports
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -545,6 +581,10 @@ export type InsertRouteStop = z.infer<typeof insertRouteStopSchema>;
 export type RouteStop = typeof routeStops.$inferSelect;
 export type Business = typeof businesses.$inferSelect;
 export type InsertBusiness = z.infer<typeof insertBusinessSchema>;
+export type BusinessSettings = typeof businessSettings.$inferSelect;
+export type InsertBusinessSettings = z.infer<
+  typeof insertBusinessSettingsSchema
+>;
 export type RivrAdmin = typeof rivrAdmins.$inferSelect;
 export type InsertRivrAdmin = z.infer<typeof insertRivrAdminSchema>;
 export type BusinessAnalytics = typeof businessAnalytics.$inferSelect;

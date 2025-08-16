@@ -1,9 +1,12 @@
 "use client";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RivrLogo } from "@/components/rivr-logo";
 import LogoUpload from "@/components/logo-upload";
 import { Settings, Mail } from "lucide-react";
+import { getBusinessSettings } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface SettingsTabProps {
   customLogo: string | null;
@@ -18,12 +21,39 @@ export function SettingsTab({
   onEmailTemplatesClick,
   onEmailLogsClick,
 }: SettingsTabProps) {
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load business settings on mount
+  useEffect(() => {
+    const loadBusinessSettings = async () => {
+      try {
+        setIsLoading(true);
+        const response = await getBusinessSettings();
+        if (response.success && response.settings?.customLogo) {
+          onLogoChange(response.settings.customLogo);
+        }
+      } catch (error) {
+        console.error("Failed to load business settings:", error);
+        // Fallback to localStorage if API fails
+        const savedLogo = localStorage.getItem("customLogo");
+        if (savedLogo && onLogoChange) {
+          onLogoChange(savedLogo);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadBusinessSettings();
+  }, [onLogoChange]);
+
   return (
     <Card className="bg-card border border-border shadow-sm">
       <div className="p-6">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-            <Settings className="w-5 h-5 text-blue-600" />
+          <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+            <Settings className="w-5 h-5 text-primary" />
           </div>
           <div>
             <h3 className="text-lg font-semibold text-foreground">
@@ -47,7 +77,13 @@ export function SettingsTab({
                   Current Logo:
                 </div>
                 <div className="p-4 bg-muted rounded-lg border border-border">
-                  <RivrLogo size="md" customLogo={customLogo} />
+                  {isLoading ? (
+                    <div className="w-24 h-16 flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    </div>
+                  ) : (
+                    <RivrLogo size="md" customLogo={customLogo} />
+                  )}
                 </div>
               </div>
               <div className="flex-1">
@@ -81,7 +117,7 @@ export function SettingsTab({
                 </div>
                 <Button
                   size="sm"
-                  className="bg-blue-500 hover:bg-blue-600 text-white"
+                  className="bg-primary hover:bg-primary/90 text-white"
                   onClick={onEmailTemplatesClick}
                 >
                   <Settings className="w-4 h-4 mr-2" />
@@ -92,7 +128,7 @@ export function SettingsTab({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="border-border text-foreground hover:bg-muted"
+                  className="border-border text-foreground hover:bg-muted hover:text-foreground"
                   onClick={onEmailLogsClick}
                 >
                   <Mail className="w-4 h-4 mr-2" />

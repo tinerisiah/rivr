@@ -62,7 +62,8 @@ export const createServer = async (): Promise<Express> => {
         envAllowed.includes(origin) ||
         host === baseDomain ||
         host.endsWith(`.${baseDomain}`) ||
-        host.endsWith(`.${frontendDomain}`);
+        host.endsWith(`.${frontendDomain}`) ||
+        host.includes(frontendDomain);
       return callback(null, !!allowed);
     } catch {
       return callback(null, false);
@@ -83,6 +84,7 @@ export const createServer = async (): Promise<Express> => {
           "Authorization",
           "X-Requested-With",
           "X-Tenant-Subdomain",
+          "X-Customer-Token",
         ],
       })
     );

@@ -15,11 +15,13 @@ function parseTenantFromLocation(baseDomain: string): TenantInfo {
     return { subdomain: undefined, baseDomain, isExec: false };
   }
   const host = window.location.host.toLowerCase();
+
   const isBase = host === baseDomain;
   let sub: string | null = null;
   if (!isBase && host.endsWith(`.${baseDomain}`)) {
     sub = host.slice(0, -`.${baseDomain}`.length);
   }
+
   const isExec = sub === (process.env.NEXT_PUBLIC_EXEC_SUBDOMAIN || "exec");
 
   // For now, use subdomain as business name (can be enhanced later with API call)

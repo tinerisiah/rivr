@@ -124,7 +124,7 @@ const pickupCompletionSchema = z.object({
 });
 
 const deliveryCompletionSchema = z.object({
-  photo: z.instanceof(File).optional(),
+  photo: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -408,7 +408,7 @@ export function DriverDashboard() {
   const deliveryForm = useForm<DeliveryCompletionFormValues>({
     resolver: zodResolver(deliveryCompletionSchema),
     defaultValues: {
-      photo: undefined,
+      photo: "",
       notes: "",
     },
   });
@@ -600,6 +600,8 @@ export function DriverDashboard() {
     );
   }
 
+  console.log("user", user);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -611,7 +613,7 @@ export function DriverDashboard() {
               <h1 className="text-2xl font-bold text-foreground">
                 Driver Dashboard
               </h1>
-              <p className="text-muted-foreground">Driver ID: {driverId}</p>
+              <p className="text-muted-foreground">Welcome, {user?.name}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -1121,7 +1123,18 @@ export function DriverDashboard() {
                         <Input
                           type="file"
                           accept="image/*"
-                          onChange={(e) => field.onChange(e.target.files?.[0])}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                field.onChange(reader.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            } else {
+                              field.onChange("");
+                            }
+                          }}
                         />
                       </FormControl>
                     </FormItem>

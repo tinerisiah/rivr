@@ -143,13 +143,7 @@ export function registerDriverRoutes(app: Express) {
 
         const completionData = driverPickupCompletionSchema.parse(req.body);
 
-        // Update pickup to "in_process" status
-        await storage.updatePickupRequestProductionStatus(
-          pickupId,
-          "in_process"
-        );
-
-        // Update pickup with completion data including RO# and photo
+        // Update pickup with completion data including RO# and photo and set status
         await storage.updatePickupCompletion(pickupId, {
           completionNotes: completionData.notes,
           roNumber: completionData.roNumber || undefined,
@@ -157,6 +151,12 @@ export function registerDriverRoutes(app: Express) {
           isCompleted: true,
           completedAt: new Date(),
         });
+
+        // Mark timeline in_process
+        await storage.updatePickupRequestProductionStatus(
+          pickupId,
+          "in_process"
+        );
 
         // Broadcast production status update to tenant room (admins/drivers)
         const tenantId = (req as any).businessId as number | undefined;
@@ -200,9 +200,16 @@ export function registerDriverRoutes(app: Express) {
       try {
         const storage = getStorage(req);
         const deliveryId = parseInt(req.params.id);
-        const { photo, notes } = req.body;
+        const { photo, notes } = req.body as { photo?: string; notes?: string };
 
-        // Update delivery to "ready_to_bill" status
+        // Persist delivery photo/notes and mark deliveredAt
+        await storage.deliverPickupRequest(deliveryId, {
+          deliveryNotes: notes,
+          deliveryQrCodes: [],
+          deliveryPhoto: photo,
+        });
+
+        // Update delivery to "ready_to_bill" status and timeline
         await storage.updatePickupRequestProductionStatus(
           deliveryId,
           "ready_to_bill"

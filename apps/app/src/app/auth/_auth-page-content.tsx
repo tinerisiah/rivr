@@ -4,9 +4,11 @@ import { Header } from "@/components/ui";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { LoginForm } from "../../components/auth/login-form";
+import { DriverRegister } from "../../components/auth/driver-register";
 import { RegisterForm } from "../../components/auth/register-form";
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../../lib/auth";
+import { useTenant } from "@/lib/tenant-context";
 
 export function AuthPageContent() {
   const router = useRouter();
@@ -16,6 +18,8 @@ export function AuthPageContent() {
   const [type, setType] = useState<"business" | "rivr_admin" | "driver">(
     "business"
   );
+
+  const { subdomain } = useTenant();
 
   // Handle role parameter from URL for direct access
   useEffect(() => {
@@ -71,27 +75,29 @@ export function AuthPageContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl">
-        <Header />
+        <Header minimal />
 
         {/* Authentication Forms */}
-        <div className="flex justify-center mb-8">
-          <div className="flex space-x-1 bg-muted p-1 rounded-lg">
-            <Button
-              variant={!showRegister ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setShowRegister(false)}
-            >
-              Login
-            </Button>
-            <Button
-              variant={showRegister ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setShowRegister(true)}
-            >
-              Register
-            </Button>
+        {(!subdomain || type === "driver") && (
+          <div className="flex justify-center mb-8">
+            <div className="flex space-x-1 bg-muted p-1 rounded-lg">
+              <Button
+                variant={!showRegister ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setShowRegister(false)}
+              >
+                Login
+              </Button>
+              <Button
+                variant={showRegister ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setShowRegister(true)}
+              >
+                Register
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Authentication Forms */}
         <div className="flex justify-center">
@@ -101,6 +107,8 @@ export function AuthPageContent() {
               onSuccess={handleLoginSuccess}
               onSwitchToRegister={() => setShowRegister(true)}
             />
+          ) : type === "driver" ? (
+            <DriverRegister />
           ) : (
             <RegisterForm
               onSuccess={handleRegisterSuccess}

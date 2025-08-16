@@ -1,26 +1,18 @@
 "use client";
 
-import * as React from "react";
-import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RivrLogo } from "@/components/rivr-logo";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { useAuth } from "@/lib/auth";
 import {
+  ArrowLeft,
+  Route as RouteIcon,
   Settings,
   Truck,
-  Package,
-  MapPin,
-  Clock,
   Users,
-  DollarSign,
-  ArrowLeft,
-  CheckCircle,
-  AlertTriangle,
-  Route as RouteIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { RivrLogo } from "@/components/rivr-logo";
-import { useAuth } from "@/lib/auth";
+import { useRouter } from "next/navigation";
 
 export function BusinessPortal() {
   const router = useRouter();
