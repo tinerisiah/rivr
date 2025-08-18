@@ -1,4 +1,65 @@
+/* eslint-disable turbo/no-undeclared-env-vars */
+import { log } from "@repo/logger";
 import type { PickupRequest, QuoteRequest } from "@repo/schema";
+import { MailtrapClient } from "mailtrap";
+
+const MAILTRAP_TOKEN = process.env.MAILTRAP_TOKEN || "";
+const mailtrapClient = MAILTRAP_TOKEN
+  ? new MailtrapClient({ token: MAILTRAP_TOKEN })
+  : null;
+
+export async function sendEmail(params: {
+  to: string;
+  subject: string;
+  html: string;
+  fromEmail?: string;
+  fromName?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!mailtrapClient) {
+      // In dev or when not configured, no-op but report success to unblock flow
+      return { success: true };
+    }
+    const fromEmail =
+      params.fromEmail ||
+      process.env.MAILTRAP_FROM_EMAIL ||
+      "no-reply@rivr.app";
+    const fromName =
+      params.fromName || process.env.MAILTRAP_FROM_NAME || "RIVR";
+
+    log("Sending email", {
+      fromEmail,
+      fromName,
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+    });
+
+    await mailtrapClient.send({
+      from: { email: fromEmail, name: fromName },
+      to: [{ email: params.to }],
+      subject: params.subject,
+      html: params.html,
+    });
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export function renderEmailBodyTemplate(
+  bodyTemplate: string,
+  variables: Record<string, string | number | undefined | null>
+): string {
+  // Simple variable interpolation: {{variable}}
+  return bodyTemplate.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
+    const value = variables[key];
+    return value === undefined || value === null ? "" : String(value);
+  });
+}
 
 export function createQuoteReplyEmail(quote: QuoteRequest): string {
   const subject = encodeURIComponent(
@@ -90,4 +151,24 @@ Best,
 RIVR Team
   `);
   return `mailto:${params.email}?subject=${subject}&body=${body}`;
+}
+
+export function buildPasswordResetEmail(params: {
+  toEmail: string;
+  resetUrl: string;
+}): { subject: string; html: string } {
+  const subject = `Reset your password`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #0a0a0a;">
+      <h2>Reset your password</h2>
+      <p>You recently requested to reset your password. Click the button below to continue. This link will expire in 1 hour.</p>
+      <p style="margin: 24px 0;">
+        <a href="${params.resetUrl}" style="background:#111827;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;">Reset Password</a>
+      </p>
+      <p>If the button above does not work, copy and paste this URL into your browser:</p>
+      <p><a href="${params.resetUrl}">${params.resetUrl}</a></p>
+      <p>If you did not request a password reset, you can safely ignore this email.</p>
+    </div>
+  `;
+  return { subject, html };
 }

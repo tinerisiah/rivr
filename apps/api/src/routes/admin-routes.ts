@@ -13,7 +13,7 @@ import {
 import { authenticateToken } from "../auth";
 import { requirePermission, requireTenantMatch } from "../auth/rbac";
 import { db } from "../db";
-import { businesses } from "@repo/schema";
+import { businesses, insertBusinessEmployeeSchema } from "@repo/schema";
 
 export function registerAdminRoutes(app: Express) {
   // Customer management routes (tenant-scoped)
@@ -214,6 +214,47 @@ export function registerAdminRoutes(app: Express) {
             .json({ success: false, message: "Pickup request not found" });
         }
 
+        // Send email based on template for this production status
+        try {
+          const template =
+            await storage.getEmailTemplateByType(productionStatus);
+          if (template && updated.email) {
+            const { renderEmailBodyTemplate, sendEmail } = await import(
+              "../email-utils"
+            );
+            const html = renderEmailBodyTemplate(template.bodyTemplate, {
+              firstName: updated.firstName,
+              lastName: updated.lastName,
+              businessName: updated.businessName,
+              address: updated.address,
+              roNumber: (updated as any).roNumber,
+              productionStatus: updated.productionStatus,
+            });
+            const subject = template.subject;
+            const sentBy = req.user?.email || "system@rivr.app";
+            const sendResult = await sendEmail({
+              to: updated.email,
+              subject,
+              html,
+            });
+            await storage.createEmailLog({
+              customerId: updated.customerId,
+              pickupRequestId: updated.id,
+              templateType: productionStatus,
+              recipientEmail: updated.email,
+              subject,
+              sentBy,
+              status: sendResult.success ? "sent" : "failed",
+              errorMessage: sendResult.success ? undefined : sendResult.error,
+            } as any);
+          }
+        } catch (e) {
+          // Non-blocking: log but continue response
+          log("error", "Failed to process status change email", {
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+
         // Broadcast production status update to tenant room (admins/drivers)
         const tenantId = (req as any).businessId as number | undefined;
         if (tenantId) {
@@ -341,6 +382,45 @@ export function registerAdminRoutes(app: Express) {
           completionData.id,
           completionData
         );
+
+        // Optionally trigger email if a template for in_process exists
+        try {
+          if (updatedRequest) {
+            const template = await storage.getEmailTemplateByType("in_process");
+            if (template && updatedRequest.email) {
+              const { renderEmailBodyTemplate, sendEmail } = await import(
+                "../email-utils"
+              );
+              const html = renderEmailBodyTemplate(template.bodyTemplate, {
+                firstName: updatedRequest.firstName,
+                lastName: updatedRequest.lastName,
+                businessName: updatedRequest.businessName,
+                address: updatedRequest.address,
+                roNumber: (updatedRequest as any).roNumber,
+                productionStatus: updatedRequest.productionStatus,
+              });
+              const subject = template.subject;
+              const sentBy = req.user?.email || "system@rivr.app";
+              const sendResult = await sendEmail({
+                to: updatedRequest.email,
+                subject,
+                html,
+              });
+              await storage.createEmailLog({
+                customerId: updatedRequest.customerId,
+                pickupRequestId: updatedRequest.id,
+                templateType: "in_process",
+                recipientEmail: updatedRequest.email,
+                subject,
+                sentBy,
+                status: sendResult.success ? "sent" : "failed",
+                errorMessage: sendResult.success ? undefined : sendResult.error,
+              } as any);
+            }
+          }
+        } catch (e) {
+          // Non-blocking
+        }
 
         res.json({
           success: true,
@@ -839,6 +919,107 @@ export function registerAdminRoutes(app: Express) {
           success: false,
           message: "Failed to fetch email templates",
         });
+      }
+    }
+  );
+
+  // Business employee (view-only) management
+  app.get(
+    "/api/admin/employees",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("business:read"),
+    async (req, res) => {
+      try {
+        const businessId = (req as any).businessId as number | undefined;
+        if (!businessId) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Business ID is required" });
+        }
+        const storage = getStorage(req);
+        const employees = await storage.getBusinessEmployees(businessId);
+        res.json({ success: true, employees });
+      } catch (error) {
+        log("error", "Failed to fetch employees", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to fetch employees" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/admin/employees",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("business:write"),
+    async (req, res) => {
+      try {
+        const businessId = (req as any).businessId as number | undefined;
+        if (!businessId) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Business ID is required" });
+        }
+        const payload = insertBusinessEmployeeSchema
+          .extend({ password: z.string().min(8) })
+          .parse({ ...req.body, businessId });
+        const storage = getStorage(req);
+        const hashed = await (
+          await import("../auth")
+        ).hashPassword(payload.password);
+        const employee = await storage.createBusinessEmployee({
+          businessId,
+          name: payload.name,
+          email: payload.email,
+          password: hashed,
+          isActive: true,
+        } as any);
+        res.json({ success: true, employee });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid employee data",
+            errors: error.errors,
+          });
+        }
+        log("error", "Failed to create employee", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to create employee" });
+      }
+    }
+  );
+
+  app.delete(
+    "/api/admin/employees/:id",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("business:write"),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        if (Number.isNaN(id)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid employee id" });
+        }
+        const storage = getStorage(req);
+        await storage.deleteBusinessEmployee(id);
+        res.json({ success: true, message: "Employee deleted" });
+      } catch (error) {
+        log("error", "Failed to delete employee", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to delete employee" });
       }
     }
   );

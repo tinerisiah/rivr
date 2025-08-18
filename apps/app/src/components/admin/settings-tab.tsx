@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 interface SettingsTabProps {
   customLogo: string | null;
   onLogoChange: (logo: string | null) => void;
+  readOnly?: boolean;
   onEmailTemplatesClick: () => void;
   onEmailLogsClick: () => void;
 }
@@ -18,6 +19,7 @@ interface SettingsTabProps {
 export function SettingsTab({
   customLogo,
   onLogoChange,
+  readOnly = false,
   onEmailTemplatesClick,
   onEmailLogsClick,
 }: SettingsTabProps) {
@@ -90,6 +92,7 @@ export function SettingsTab({
                 <LogoUpload
                   onLogoChange={onLogoChange}
                   currentLogo={customLogo}
+                  readOnly={readOnly}
                 />
                 <div className="mt-3 text-sm text-muted-foreground">
                   Upload your business logo to customize the platform branding.
@@ -115,25 +118,29 @@ export function SettingsTab({
                     workflow
                   </p>
                 </div>
-                <Button
-                  size="sm"
-                  className="bg-primary hover:bg-primary/90 text-white"
-                  onClick={onEmailTemplatesClick}
-                >
-                  <Settings className="w-4 h-4 mr-2" />
-                  Manage Templates
-                </Button>
+                {!readOnly && (
+                  <Button
+                    size="sm"
+                    className="bg-primary hover:bg-primary/90 text-white"
+                    onClick={onEmailTemplatesClick}
+                  >
+                    <Settings className="w-4 h-4 mr-2" />
+                    Manage Templates
+                  </Button>
+                )}
               </div>
               <div className="flex items-center justify-between mt-4">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-border text-foreground hover:bg-muted hover:text-foreground"
-                  onClick={onEmailLogsClick}
-                >
-                  <Mail className="w-4 h-4 mr-2" />
-                  View Email Logs
-                </Button>
+                {!readOnly && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-border text-foreground hover:bg-muted hover:text-foreground"
+                    onClick={onEmailLogsClick}
+                  >
+                    <Mail className="w-4 h-4 mr-2" />
+                    View Email Logs
+                  </Button>
+                )}
               </div>
               <div className="text-xs text-muted-foreground">
                 Customize email templates for customer workflow stages: Pending

@@ -153,10 +153,48 @@ export function registerDriverRoutes(app: Express) {
         });
 
         // Mark timeline in_process
-        await storage.updatePickupRequestProductionStatus(
+        const updated = await storage.updatePickupRequestProductionStatus(
           pickupId,
           "in_process"
         );
+        // Send email on transition to in_process if template exists
+        try {
+          if (updated) {
+            const template = await storage.getEmailTemplateByType("in_process");
+            if (template && updated.email) {
+              const { renderEmailBodyTemplate, sendEmail } = await import(
+                "../email-utils"
+              );
+              const html = renderEmailBodyTemplate(template.bodyTemplate, {
+                firstName: updated.firstName,
+                lastName: updated.lastName,
+                businessName: updated.businessName,
+                address: updated.address,
+                roNumber: (updated as any).roNumber,
+                productionStatus: updated.productionStatus,
+              });
+              const subject = template.subject;
+              const sentBy = req.user?.email || "system@rivr.app";
+              const sendResult = await sendEmail({
+                to: updated.email,
+                subject,
+                html,
+              });
+              await storage.createEmailLog({
+                customerId: updated.customerId,
+                pickupRequestId: updated.id,
+                templateType: "in_process",
+                recipientEmail: updated.email,
+                subject,
+                sentBy,
+                status: sendResult.success ? "sent" : "failed",
+                errorMessage: sendResult.success ? undefined : sendResult.error,
+              } as any);
+            }
+          }
+        } catch (e) {
+          // Non-blocking
+        }
 
         // Broadcast production status update to tenant room (admins/drivers)
         const tenantId = (req as any).businessId as number | undefined;
@@ -203,17 +241,58 @@ export function registerDriverRoutes(app: Express) {
         const { photo, notes } = req.body as { photo?: string; notes?: string };
 
         // Persist delivery photo/notes and mark deliveredAt
-        await storage.deliverPickupRequest(deliveryId, {
+        const delivered = await storage.deliverPickupRequest(deliveryId, {
           deliveryNotes: notes,
           deliveryQrCodes: [],
           deliveryPhoto: photo,
         });
 
         // Update delivery to "ready_to_bill" status and timeline
-        await storage.updatePickupRequestProductionStatus(
+        const updated = await storage.updatePickupRequestProductionStatus(
           deliveryId,
           "ready_to_bill"
         );
+
+        // Email on ready_to_bill
+        try {
+          const record = updated || delivered;
+          if (record) {
+            const template =
+              await storage.getEmailTemplateByType("ready_to_bill");
+            if (template && record.email) {
+              const { renderEmailBodyTemplate, sendEmail } = await import(
+                "../email-utils"
+              );
+              const html = renderEmailBodyTemplate(template.bodyTemplate, {
+                firstName: record.firstName,
+                lastName: record.lastName,
+                businessName: record.businessName,
+                address: record.address,
+                roNumber: (record as any).roNumber,
+                productionStatus: "ready_to_bill",
+              });
+              const subject = template.subject;
+              const sentBy = req.user?.email || "system@rivr.app";
+              const sendResult = await sendEmail({
+                to: record.email,
+                subject,
+                html,
+              });
+              await storage.createEmailLog({
+                customerId: record.customerId,
+                pickupRequestId: record.id,
+                templateType: "ready_to_bill",
+                recipientEmail: record.email,
+                subject,
+                sentBy,
+                status: sendResult.success ? "sent" : "failed",
+                errorMessage: sendResult.success ? undefined : sendResult.error,
+              } as any);
+            }
+          }
+        } catch (e) {
+          // Non-blocking
+        }
 
         // Broadcast production status update to tenant room (admins/drivers)
         const tenantId = (req as any).businessId as number | undefined;

@@ -22,6 +22,7 @@ export function ProtectedRoute({
 
   // Determine if we should redirect and to where
   const redirectPath = useMemo(() => {
+    console.log("requiredRoles", requiredRoles);
     const roleParam = requiredRoles?.[0];
     const base = "/auth";
     return roleParam ? `${base}?role=${roleParam}` : base;
@@ -79,7 +80,24 @@ export function BusinessProtectedRoute({
   fallback?: React.ReactNode;
 }) {
   return (
-    <ProtectedRoute requiredRoles={["business_owner"]} fallback={fallback}>
+    <ProtectedRoute
+      requiredRoles={["business_owner", "employee_viewer"]}
+      fallback={fallback}
+    >
+      {children}
+    </ProtectedRoute>
+  );
+}
+
+export function EmployeeProtectedRoute({
+  children,
+  fallback,
+}: {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}) {
+  return (
+    <ProtectedRoute requiredRoles={["employee_viewer"]} fallback={fallback}>
       {children}
     </ProtectedRoute>
   );

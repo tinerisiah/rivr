@@ -1,6 +1,10 @@
 import type { Request, Response, NextFunction } from "express";
 
-export type Role = "rivr_admin" | "business_owner" | "driver";
+export type Role =
+  | "rivr_admin"
+  | "business_owner"
+  | "driver"
+  | "employee_viewer";
 
 // Simple permission map; expand as needed
 export const permissions: Record<Role, string[]> = {
@@ -21,12 +25,14 @@ export const permissions: Record<Role, string[]> = {
     "pickup:write",
   ],
   driver: ["driver:self", "pickup:read", "pickup:update_status"],
+  // Business employee (view-only): can read business and pickup data
+  employee_viewer: ["business:read", "pickup:read", "driver:read"],
 };
 
 // Optional role inheritance (higher roles inherit from lower)
 const roleInheritance: Partial<Record<Role, Role[]>> = {
-  rivr_admin: ["business_owner", "driver"],
-  business_owner: ["driver"],
+  rivr_admin: ["business_owner", "driver", "employee_viewer"],
+  business_owner: ["driver", "employee_viewer"],
 };
 
 function resolvePermissions(

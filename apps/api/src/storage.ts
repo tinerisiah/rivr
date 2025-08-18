@@ -28,6 +28,9 @@ import {
   type RouteStop,
   type Business,
   type BusinessSettings,
+  businessEmployees,
+  type BusinessEmployee,
+  type InsertBusinessEmployee,
   type InsertCustomer,
   type InsertPickupRequest,
   type InsertQuoteRequest,
@@ -784,6 +787,37 @@ class Storage {
       .where(eq(emailTemplates.isActive, true));
   }
 
+  // Business employee operations (tenant-agnostic: stored in shared schema keyed by businessId)
+  async createBusinessEmployee(
+    data: InsertBusinessEmployee
+  ): Promise<BusinessEmployee> {
+    const [row] = await db.insert(businessEmployees).values(data).returning();
+    return row as BusinessEmployee;
+  }
+
+  async getBusinessEmployees(businessId: number): Promise<BusinessEmployee[]> {
+    return (await db
+      .select()
+      .from(businessEmployees)
+      .where(eq(businessEmployees.businessId, businessId))) as any;
+  }
+
+  async updateBusinessEmployee(
+    id: number,
+    updates: Partial<InsertBusinessEmployee>
+  ): Promise<BusinessEmployee | null> {
+    const [row] = await db
+      .update(businessEmployees)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(businessEmployees.id, id))
+      .returning();
+    return (row as BusinessEmployee) || null;
+  }
+
+  async deleteBusinessEmployee(id: number): Promise<void> {
+    await db.delete(businessEmployees).where(eq(businessEmployees.id, id));
+  }
+
   async createEmailTemplate(data: InsertEmailTemplate): Promise<any> {
     const [template] = await db.insert(emailTemplates).values(data).returning();
     return template;
@@ -799,6 +833,30 @@ class Storage {
       .where(eq(emailTemplates.id, id))
       .returning();
     return template || null;
+  }
+
+  async getEmailTemplateByType(templateType: string): Promise<any | null> {
+    const [template] = await db
+      .select()
+      .from(emailTemplates)
+      .where(
+        and(
+          eq(emailTemplates.isActive, true),
+          eq(emailTemplates.templateType, templateType)
+        )
+      )
+      .limit(1);
+    return template || null;
+  }
+
+  async createEmailLog(data: InsertEmailLog): Promise<any> {
+    return this.withDb(async (dbc) => {
+      const [row] = await dbc
+        .insert(emailAutomationLog)
+        .values(data)
+        .returning();
+      return row;
+    });
   }
 
   async getEmailLogs(

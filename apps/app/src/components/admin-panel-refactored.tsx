@@ -4,6 +4,7 @@ import { AdminTabs } from "@/components/admin/admin-tabs";
 import { BusinessForm } from "@/components/admin/business-form";
 import { CustomersTab } from "@/components/admin/customers-tab";
 import { DriversTab } from "@/components/admin/drivers-tab";
+import { EmployeesTab } from "@/components/admin/employees-tab";
 import { OverviewTab } from "@/components/admin/overview-tab";
 import { ProductionTab } from "@/components/admin/production-tab";
 import { SettingsTab } from "@/components/admin/settings-tab";
@@ -46,6 +47,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import {
+  Select,
+  SelectItem,
+  SelectContent,
+  SelectTrigger,
+  SelectValue,
+  Checkbox,
+} from "./ui";
 
 // Form schemas
 const customerFormSchema = z.object({
@@ -109,6 +118,8 @@ export function AdminPanelRefactored({
   onLogoChange,
 }: AdminPanelRefactoredProps) {
   const { user, isAuthenticated: isMainAuth, logout } = useAuth();
+  const isReadOnly = user?.role === "employee_viewer";
+
   const { toast } = useToast();
   const router = useRouter();
 
@@ -910,6 +921,12 @@ export function AdminPanelRefactored({
       ),
     },
     {
+      value: "employees",
+      label: "Employees",
+      hiddenOnMobile: true,
+      content: <EmployeesTab readOnly={isReadOnly} />,
+    },
+    {
       value: "customers",
       label: "Customers",
       content: (
@@ -917,6 +934,7 @@ export function AdminPanelRefactored({
           customers={customers}
           requests={requests}
           loadingCustomers={loadingCustomers}
+          readOnly={isReadOnly}
           onAddCustomer={() => setShowCustomerForm(true)}
           onEditCustomer={handleEditCustomer}
           onCopyLink={copyToClipboard}
@@ -933,6 +951,7 @@ export function AdminPanelRefactored({
         <DriversTab
           drivers={drivers}
           loadingDrivers={loadingDrivers}
+          readOnly={isReadOnly}
           onAddDriver={() => setShowDriverForm(true)}
           onEditDriver={handleEditDriver}
           onDeleteDriver={handleDeleteDriver}
@@ -947,6 +966,7 @@ export function AdminPanelRefactored({
       content: (
         <ProductionTab
           requests={requests}
+          readOnly={isReadOnly}
           onUpdateProductionStatus={updateProductionStatus}
           onExportReport={exportProductionReport}
           onViewJobDetails={handleViewJobDetails}
@@ -973,6 +993,7 @@ export function AdminPanelRefactored({
         <SettingsTab
           customLogo={customLogo || null}
           onLogoChange={onLogoChange || (() => {})}
+          readOnly={isReadOnly}
           onEmailTemplatesClick={() => setShowEmailTemplatesModal(true)}
           onEmailLogsClick={() => setShowEmailLogsModal(true)}
         />
@@ -1745,7 +1766,7 @@ export function AdminPanelRefactored({
               <Input value={selectedCustomerForEmail?.email || ""} disabled />
             </div>
             <div>
-              <Label className="text-muted-foreground">Subject</Label>
+              <Label>Subject</Label>
               <Input
                 value={emailSubject}
                 onChange={(e) => setEmailSubject(e.target.value)}
@@ -1799,32 +1820,36 @@ export function AdminPanelRefactored({
               <h4 className="font-medium mb-2">Create Template</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-sm text-muted-foreground">Type</label>
-                  <select
-                    className="w-full border rounded-md p-2 bg-background"
+                  <Label>Type</Label>
+                  <Select
                     value={newTemplate.templateType}
-                    onChange={(e) =>
+                    onValueChange={(value) =>
                       setNewTemplate((t) => ({
                         ...t,
-                        templateType: e.target.value,
+                        templateType: value,
                       }))
                     }
                   >
-                    <option value="pending">pending</option>
-                    <option value="in_process">in_process</option>
-                    <option value="ready_for_delivery">
-                      ready_for_delivery
-                    </option>
-                    <option value="ready_to_bill">ready_to_bill</option>
-                    <option value="billed">billed</option>
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a template type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">pending</SelectItem>
+                      <SelectItem value="in_process">in_process</SelectItem>
+                      <SelectItem value="ready_for_delivery">
+                        ready_for_delivery
+                      </SelectItem>
+                      <SelectItem value="ready_to_bill">
+                        ready_to_bill
+                      </SelectItem>
+                      <SelectItem value="billed">billed</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
-                  <label className="text-sm text-muted-foreground">
-                    Subject
-                  </label>
-                  <input
-                    className="w-full border rounded-md p-2 bg-background"
+                  <Label>Subject</Label>
+                  <Input
+                    placeholder="Subject"
                     value={newTemplate.subject}
                     onChange={(e) =>
                       setNewTemplate((t) => ({ ...t, subject: e.target.value }))
@@ -1832,8 +1857,8 @@ export function AdminPanelRefactored({
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="text-sm text-muted-foreground">Body</label>
-                  <textarea
+                  <Label>Body</Label>
+                  <Textarea
                     className="w-full border rounded-md p-2 bg-background min-h-[120px]"
                     value={newTemplate.bodyTemplate}
                     onChange={(e) =>
@@ -1845,20 +1870,17 @@ export function AdminPanelRefactored({
                   />
                 </div>
                 <div className="flex items-center gap-3">
-                  <input
+                  <Checkbox
                     id="tmpl-active"
-                    type="checkbox"
                     checked={newTemplate.isActive}
-                    onChange={(e) =>
+                    onCheckedChange={(checked) =>
                       setNewTemplate((t) => ({
                         ...t,
-                        isActive: e.target.checked,
+                        isActive: checked === true,
                       }))
                     }
                   />
-                  <label htmlFor="tmpl-active" className="text-sm">
-                    Active
-                  </label>
+                  <Label htmlFor="tmpl-active">Active</Label>
                 </div>
                 <div className="sm:col-span-2 text-right">
                   <Button
@@ -1878,71 +1900,73 @@ export function AdminPanelRefactored({
                 {loadingEmailTemplates ? (
                   <div>Loading templates…</div>
                 ) : (
-                  (emailTemplatesData?.templates || []).map((tpl: any) => (
-                    <div key={tpl.id} className="border rounded p-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-sm text-muted-foreground">
-                            Type
-                          </label>
-                          <input
-                            className="w-full border rounded-md p-2 bg-muted"
-                            value={tpl.templateType}
-                            disabled
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm text-muted-foreground">
-                            Subject
-                          </label>
-                          <input
-                            className="w-full border rounded-md p-2 bg-background"
-                            defaultValue={tpl.subject}
-                            onBlur={(e) =>
-                              updateTemplateMutation.mutate({
-                                id: tpl.id,
-                                subject: e.target.value,
-                              })
-                            }
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="text-sm text-muted-foreground">
-                            Body
-                          </label>
-                          <textarea
-                            className="w-full border rounded-md p-2 bg-background min-h-[120px]"
-                            defaultValue={tpl.bodyTemplate}
-                            onBlur={(e) =>
-                              updateTemplateMutation.mutate({
-                                id: tpl.id,
-                                bodyTemplate: e.target.value,
-                              })
-                            }
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            id={`active-${tpl.id}`}
-                            type="checkbox"
-                            defaultChecked={tpl.isActive}
-                            onChange={(e) =>
-                              updateTemplateMutation.mutate({
-                                id: tpl.id,
-                                isActive: e.target.checked,
-                              })
-                            }
-                          />
-                          <label
-                            htmlFor={`active-${tpl.id}`}
-                            className="text-sm"
-                          >
-                            Active
-                          </label>
+                  ((emailTemplatesData as any)?.templates || []).map(
+                    (tpl: any) => (
+                      <div key={tpl.id} className="border rounded p-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-sm text-muted-foreground">
+                              Type
+                            </label>
+                            <input
+                              className="w-full border rounded-md p-2 bg-muted"
+                              value={tpl.templateType}
+                              disabled
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm text-muted-foreground">
+                              Subject
+                            </label>
+                            <input
+                              className="w-full border rounded-md p-2 bg-background"
+                              defaultValue={tpl.subject}
+                              onBlur={(e) =>
+                                updateTemplateMutation.mutate({
+                                  id: tpl.id,
+                                  subject: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="text-sm text-muted-foreground">
+                              Body
+                            </label>
+                            <textarea
+                              className="w-full border rounded-md p-2 bg-background min-h-[120px]"
+                              defaultValue={tpl.bodyTemplate}
+                              onBlur={(e) =>
+                                updateTemplateMutation.mutate({
+                                  id: tpl.id,
+                                  bodyTemplate: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              id={`active-${tpl.id}`}
+                              type="checkbox"
+                              defaultChecked={tpl.isActive}
+                              onChange={(e) =>
+                                updateTemplateMutation.mutate({
+                                  id: tpl.id,
+                                  isActive: e.target.checked,
+                                })
+                              }
+                            />
+                            <label
+                              htmlFor={`active-${tpl.id}`}
+                              className="text-sm"
+                            >
+                              Active
+                            </label>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    )
+                  )
                 )}
               </div>
             </div>
@@ -1973,7 +1997,7 @@ export function AdminPanelRefactored({
                   </tr>
                 </thead>
                 <tbody>
-                  {(emailLogsData?.logs || []).map((log: any) => (
+                  {((emailLogsData as any)?.logs || []).map((log: any) => (
                     <tr key={log.id} className="border-b border-border">
                       <td className="p-2 whitespace-nowrap">
                         {new Date(log.sentAt || log.sent_at).toLocaleString()}

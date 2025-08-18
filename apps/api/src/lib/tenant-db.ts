@@ -130,6 +130,15 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     );
   `);
 
+  // Ensure new timeline columns exist on legacy pickup_requests tables
+  await db.execute(
+    `ALTER TABLE ${schemaName}.pickup_requests 
+       ADD COLUMN IF NOT EXISTS in_process_at timestamp,
+       ADD COLUMN IF NOT EXISTS ready_for_delivery_at timestamp,
+       ADD COLUMN IF NOT EXISTS ready_to_bill_at timestamp,
+       ADD COLUMN IF NOT EXISTS delivery_photo text;`
+  );
+
   // Quote requests table to support admin quote management
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ${schemaName}.quote_requests (

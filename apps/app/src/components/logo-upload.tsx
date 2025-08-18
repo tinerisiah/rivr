@@ -17,11 +17,13 @@ import { useToast } from "@/hooks/use-toast";
 interface LogoUploadProps {
   onLogoChange: (logoUrl: string | null) => void;
   currentLogo?: string | null;
+  readOnly?: boolean;
 }
 
 export default function LogoUpload({
   onLogoChange,
   currentLogo,
+  readOnly = false,
 }: LogoUploadProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(
@@ -74,13 +76,13 @@ export default function LogoUpload({
       setIsSaving(true);
       try {
         await updateBusinessSettings({ customLogo: previewUrl });
-        
+
         // Also save to localStorage as fallback
         localStorage.setItem("customLogo", previewUrl);
-        
+
         onLogoChange(previewUrl);
         setIsOpen(false);
-        
+
         toast({
           title: "Logo Updated",
           description: "Your business logo has been updated successfully.",
@@ -103,14 +105,14 @@ export default function LogoUpload({
     setIsSaving(true);
     try {
       await updateBusinessSettings({ customLogo: null });
-      
+
       // Also remove from localStorage
       localStorage.removeItem("customLogo");
-      
+
       setPreviewUrl(null);
       onLogoChange(null);
       setIsOpen(false);
-      
+
       toast({
         title: "Logo Removed",
         description: "Your business logo has been removed.",
@@ -135,14 +137,16 @@ export default function LogoUpload({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <Settings className="w-4 h-4 mr-2" />
-          Customize Logo
-        </Button>
+        {!readOnly && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            Customize Logo
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -185,36 +189,45 @@ export default function LogoUpload({
                 <p className="text-sm text-muted-foreground mb-2">
                   Drag and drop your logo here, or
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Choose File
-                </Button>
+                {!readOnly && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Choose File
+                  </Button>
+                )}
                 <p className="text-xs text-muted-foreground mt-2">
                   Supports PNG, JPG, SVG up to 5MB
                 </p>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileInput}
-                className="hidden"
-              />
+              {!readOnly && (
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileInput}
+                  className="hidden"
+                />
+              )}
             </CardContent>
           </Card>
 
           {/* Action Buttons */}
           <div className="flex justify-between">
             <div className="flex gap-2">
-              {currentLogo && (
-                <Button variant="outline" size="sm" onClick={handleReset} disabled={isSaving}>
+              {currentLogo && !readOnly && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReset}
+                  disabled={isSaving}
+                >
                   Reset
                 </Button>
               )}
-              {previewUrl && (
+              {previewUrl && !readOnly && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -226,10 +239,10 @@ export default function LogoUpload({
               )}
             </div>
             <div className="flex gap-2">
-              {currentLogo && (
-                <Button 
-                  variant="destructive" 
-                  size="sm" 
+              {currentLogo && !readOnly && (
+                <Button
+                  variant="destructive"
+                  size="sm"
                   onClick={handleRemove}
                   disabled={isSaving}
                 >
@@ -237,14 +250,16 @@ export default function LogoUpload({
                   {isSaving ? "Removing..." : "Remove Logo"}
                 </Button>
               )}
-              <Button 
-                onClick={handleSave} 
-                disabled={!previewUrl || isSaving} 
-                size="sm"
-              >
-                <Check className="w-4 h-4 mr-2" />
-                {isSaving ? "Saving..." : "Save Logo"}
-              </Button>
+              {!readOnly && (
+                <Button
+                  onClick={handleSave}
+                  disabled={!previewUrl || isSaving}
+                  size="sm"
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  {isSaving ? "Saving..." : "Save Logo"}
+                </Button>
+              )}
             </div>
           </div>
         </div>

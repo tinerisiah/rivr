@@ -2,7 +2,6 @@ import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
-import { faker } from "@faker-js/faker";
 
 dotenv.config();
 
@@ -25,27 +24,79 @@ function esc(input: string): string {
 
 type Mode = "full" | "auth";
 
+type BusinessRow = {
+  id: number;
+  business_name: string;
+  subdomain: string;
+  database_schema: string;
+};
+
+async function tryDeleteTable(fullyQualifiedTableName: string): Promise<void> {
+  try {
+    await db.execute(`DELETE FROM ${fullyQualifiedTableName}`);
+    console.log(`🧹 Cleared table: ${fullyQualifiedTableName}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      message.includes("does not exist") ||
+      message.includes("undefined_table") ||
+      message.includes('relation "')
+    ) {
+      console.log(
+        `ℹ️ Skipped clearing ${fullyQualifiedTableName} (table not found)`
+      );
+    } else {
+      console.log(`⚠️ Could not clear ${fullyQualifiedTableName}: ${message}`);
+    }
+  }
+}
+
 async function clearData(mode: Mode): Promise<void> {
   console.log("🗑️  Clearing existing data...");
   if (mode === "full") {
-    await db.execute("DELETE FROM route_stops");
-    await db.execute("DELETE FROM routes");
-    await db.execute("DELETE FROM pickup_requests");
-    await db.execute("DELETE FROM quote_requests");
-    await db.execute("DELETE FROM customers");
-    // Email automation log references pickup requests and customers
-    await db.execute("DELETE FROM email_automation_log");
+    // Remove dependent data in FK-safe order
+    await tryDeleteTable("email_automation_log");
+    await tryDeleteTable("route_stops");
+    await tryDeleteTable("routes");
+    await tryDeleteTable("quote_requests");
   }
-  await db.execute("DELETE FROM driver_messages");
-  await db.execute("DELETE FROM driver_status_updates");
-  await db.execute("DELETE FROM drivers");
-  await db.execute("DELETE FROM rivr_admins");
+  // Always remove pickups and customers at both global and tenant levels
+  await tryDeleteTable("pickup_requests");
+  await tryDeleteTable("customers");
+  // Remove tenant-scoped pickups and customers
+  try {
+    const result:
+      | { rows?: Array<{ database_schema: string }> }
+      | Array<{ database_schema: string }> = await db.execute(
+      `SELECT database_schema FROM businesses`
+    );
+    const container = result as
+      | { rows?: Array<{ database_schema: string }> }
+      | Array<{ database_schema: string }>;
+    const tenants: Array<{ database_schema: string }> = Array.isArray(container)
+      ? container
+      : (container.rows ?? []);
+    for (const t of tenants) {
+      await tryDeleteTable(`${t.database_schema}.pickup_requests`);
+      await tryDeleteTable(`${t.database_schema}.customers`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(
+      `⚠️ Could not enumerate tenant schemas to clear pickups/customers: ${message}`
+    );
+  }
+  await tryDeleteTable("driver_messages");
+  await tryDeleteTable("driver_status_updates");
+  await tryDeleteTable("drivers");
+  await tryDeleteTable("rivr_admins");
   // Platform-level tables that reference businesses must be cleared before businesses
-  await db.execute("DELETE FROM business_settings");
-  await db.execute("DELETE FROM business_analytics");
-  await db.execute("DELETE FROM refresh_tokens");
-  await db.execute("DELETE FROM businesses");
-  await db.execute("DELETE FROM users");
+  await tryDeleteTable("business_employees");
+  await tryDeleteTable("business_settings");
+  await tryDeleteTable("business_analytics");
+  await tryDeleteTable("refresh_tokens");
+  await tryDeleteTable("businesses");
+  await tryDeleteTable("users");
 }
 
 async function seedAuth(): Promise<void> {
@@ -173,15 +224,13 @@ async function seedAuth(): Promise<void> {
 
 async function seedFullExtras(): Promise<void> {
   // Fetch businesses and seed each tenant schema with unique data
-  const bizRes: any = await db.execute(
+  const bizRes: { rows?: BusinessRow[] } | BusinessRow[] = await db.execute(
     `SELECT id, business_name, subdomain, database_schema FROM businesses`
   );
-  const bizRows: Array<{
-    id: number;
-    business_name: string;
-    subdomain: string;
-    database_schema: string;
-  }> = bizRes.rows ?? bizRes;
+  const bizContainer = bizRes as { rows?: BusinessRow[] } | BusinessRow[];
+  const bizRows: BusinessRow[] = Array.isArray(bizContainer)
+    ? bizContainer
+    : (bizContainer.rows ?? []);
 
   for (const b of bizRows) {
     const schema = b.database_schema;
@@ -190,23 +239,6 @@ async function seedFullExtras(): Promise<void> {
     );
     // Ensure schema + tables exist
     await db.execute(`CREATE SCHEMA IF NOT EXISTS ${schema};`);
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS ${schema}.customers (
-        id serial PRIMARY KEY,
-        first_name text NOT NULL,
-        last_name text NOT NULL,
-        email text NOT NULL,
-        phone text,
-        business_name text NOT NULL,
-        address text NOT NULL,
-        access_token text,
-        email_updates_enabled boolean DEFAULT false NOT NULL,
-        custom_signature text,
-        custom_logo text,
-        created_at timestamp DEFAULT now() NOT NULL,
-        updated_at timestamp DEFAULT now() NOT NULL
-      );
-    `);
     await db.execute(`
       CREATE TABLE IF NOT EXISTS ${schema}.drivers (
         id serial PRIMARY KEY,
@@ -261,84 +293,11 @@ async function seedFullExtras(): Promise<void> {
         updated_at timestamp DEFAULT now() NOT NULL
       );
     `);
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS ${schema}.pickup_requests (
-        id serial PRIMARY KEY,
-        customer_id integer REFERENCES ${schema}.customers(id) NOT NULL,
-        first_name text NOT NULL,
-        last_name text NOT NULL,
-        email text NOT NULL,
-        phone text,
-        business_name text NOT NULL,
-        address text NOT NULL,
-        wheel_count integer DEFAULT 1 NOT NULL,
-        latitude text,
-        longitude text,
-        is_completed boolean DEFAULT false NOT NULL,
-        completed_at timestamp,
-        completion_photo text,
-        completion_location text,
-        completion_notes text,
-        employee_name text,
-        ro_number text,
-        customer_notes text,
-        wheel_qr_codes text[],
-        is_delivered boolean DEFAULT false NOT NULL,
-        delivered_at timestamp,
-        delivery_notes text,
-        delivery_qr_codes text[],
-        is_archived boolean DEFAULT false NOT NULL,
-        archived_at timestamp,
-        route_id integer,
-        route_order integer,
-        priority text DEFAULT 'normal',
-        estimated_pickup_time timestamp,
-        production_status text DEFAULT 'pending',
-        billed_at timestamp,
-        billed_amount text,
-        invoice_number text,
-        created_at timestamp DEFAULT now() NOT NULL
-      );
-    `);
-
-    console.log(`👥 Seeding customers for ${b.business_name}...`);
-    const customerIds: number[] = [];
-    for (let i = 0; i < 20; i++) {
-      const first = faker.person.firstName();
-      const last = faker.person.lastName();
-      const email = faker.internet.email({
-        firstName: first,
-        lastName: last,
-        provider: "example.com",
-      });
-      const phone = faker.phone.number();
-      const address = faker.location.streetAddress({ useFullAddress: true });
-      const token = faker.string.uuid();
-      const result: any = await db.execute(`
-        INSERT INTO ${schema}.customers (first_name, last_name, email, phone, business_name, address, access_token)
-        VALUES ('${esc(first)}', '${esc(last)}', '${esc(email)}', '${esc(phone)}', '${esc(b.business_name)}', '${esc(address)}', '${esc(token)}')
-        RETURNING id;
-      `);
-      const id = result[0]?.id || result.rows?.[0]?.id;
-      if (id) customerIds.push(id);
-    }
-    console.log(`✅ ${customerIds.length} customers created`);
+    // Tenant seed focuses on drivers and supporting entities only
 
     console.log(`🚛 Seeding drivers for ${b.business_name}...`);
-    for (let i = 0; i < 10; i++) {
-      const name = faker.person.fullName();
-      const email = faker.internet.email({
-        firstName: name.split(" ")[0],
-        lastName: name.split(" ").slice(1).join(" ") || "driver",
-        provider: "example.com",
-      });
-      const phone = faker.phone.number();
-      await db.execute(`
-        INSERT INTO ${schema}.drivers (name, email, phone, is_active)
-        VALUES ('${esc(name)}', '${esc(email)}', '${esc(phone)}', true);
-      `);
-    }
-    console.log("✅ 10 drivers created");
+    // Ensure exactly three drivers per tenant by clearing existing rows first
+    await tryDeleteTable(`${schema}.drivers`);
 
     // Ensure known test drivers exist in each tenant with hashed passwords
     console.log(`👤 Seeding test driver credentials for ${b.business_name}...`);
@@ -374,162 +333,9 @@ async function seedFullExtras(): Promise<void> {
         VALUES ('${esc(d.name)}', '${esc(d.email)}', '${esc(d.phone)}', '${esc(d.license_number)}', '${tenantDriverPassword}', 'available', true);
       `);
     }
-    console.log("✅ Tenant test drivers created/updated with passwords");
+    console.log("✅ 3 drivers created with passwords");
 
-    console.log(`📦 Seeding pickup requests for ${b.business_name}...`);
-    // Real US addresses to improve navigation realism for seeded tasks
-    const realUsAddresses = [
-      {
-        address: "1600 Amphitheatre Pkwy, Mountain View, CA 94043",
-        lat: 37.422,
-        lng: -122.0841,
-      },
-      {
-        address: "1 Apple Park Way, Cupertino, CA 95014",
-        lat: 37.3349,
-        lng: -122.009,
-      },
-      {
-        address: "1 Infinite Loop, Cupertino, CA 95014",
-        lat: 37.33182,
-        lng: -122.03118,
-      },
-      {
-        address: "350 5th Ave, New York, NY 10118",
-        lat: 40.74844,
-        lng: -73.98566,
-      },
-      {
-        address: "233 S Wacker Dr, Chicago, IL 60606",
-        lat: 41.87888,
-        lng: -87.6359,
-      },
-      {
-        address: "111 8th Ave, New York, NY 10011",
-        lat: 40.74111,
-        lng: -74.0039,
-      },
-      {
-        address: "1 Microsoft Way, Redmond, WA 98052",
-        lat: 47.63962,
-        lng: -122.12806,
-      },
-      {
-        address: "701 1st Ave, Sunnyvale, CA 94089",
-        lat: 37.41621,
-        lng: -122.02557,
-      },
-      {
-        address: "1 Hacker Way, Menlo Park, CA 94025",
-        lat: 37.48485,
-        lng: -122.14838,
-      },
-      {
-        address: "500 Terry A Francois Blvd, San Francisco, CA 94158",
-        lat: 37.77072,
-        lng: -122.38605,
-      },
-      {
-        address: "600 Congress Ave, Austin, TX 78701",
-        lat: 30.2681,
-        lng: -97.7419,
-      },
-      {
-        address: "405 Lexington Ave, New York, NY 10174",
-        lat: 40.75162,
-        lng: -73.9755,
-      },
-      {
-        address: "1000 5th Ave, New York, NY 10028",
-        lat: 40.7794,
-        lng: -73.9632,
-      },
-      {
-        address: "151 3rd St, San Francisco, CA 94103",
-        lat: 37.78572,
-        lng: -122.40107,
-      },
-      {
-        address: "4 Pennsylvania Plaza, New York, NY 10001",
-        lat: 40.75054,
-        lng: -73.99345,
-      },
-      {
-        address: "24 Willie Mays Plaza, San Francisco, CA 94107",
-        lat: 37.77859,
-        lng: -122.38927,
-      },
-      {
-        address: "1600 Pennsylvania Ave NW, Washington, DC 20500",
-        lat: 38.8977,
-        lng: -77.03653,
-      },
-      {
-        address: "405 Howard St, San Francisco, CA 94105",
-        lat: 37.78802,
-        lng: -122.39693,
-      },
-      {
-        address: "2000 K St NW, Washington, DC 20006",
-        lat: 38.90262,
-        lng: -77.04545,
-      },
-      {
-        address: "2211 N 1st St, San Jose, CA 95131",
-        lat: 37.37008,
-        lng: -121.91686,
-      },
-    ];
-    const englishNotes = [
-      "Please call upon arrival.",
-      "Ask for the front desk upon entry.",
-      "Gate code will be provided on site.",
-      "Customer prefers afternoon pickup.",
-      "Park near the loading zone.",
-      "Verify order before leaving.",
-      "Signature required at handoff.",
-      "Use the service entrance only.",
-      "Check in with reception first.",
-      "Items are ready at the counter.",
-    ];
-    const statuses = [
-      "pending",
-      "in_process",
-      "ready_for_delivery",
-      "ready_to_bill",
-      "billed",
-    ];
-    for (let i = 0; i < 20; i++) {
-      const cid = customerIds[Math.floor(Math.random() * customerIds.length)];
-      const first = faker.person.firstName();
-      const last = faker.person.lastName();
-      const email = faker.internet.email({
-        firstName: first,
-        lastName: last,
-        provider: "example.com",
-      });
-      const phone = faker.phone.number();
-      const addr = realUsAddresses[i % realUsAddresses.length];
-      const address = addr.address;
-      const wheelCount = faker.number.int({ min: 1, max: 8 });
-      const status =
-        statuses[faker.number.int({ min: 0, max: statuses.length - 1 })];
-      const priority = faker.helpers.arrayElement([
-        "low",
-        "normal",
-        "high",
-        "urgent",
-      ]);
-      const notes = faker.helpers.arrayElement(englishNotes);
-      await db.execute(`
-        INSERT INTO ${schema}.pickup_requests (
-          customer_id, first_name, last_name, email, phone, business_name, address, wheel_count, latitude, longitude, production_status, priority, customer_notes
-        ) VALUES (
-          ${cid}, '${esc(first)}', '${esc(last)}', '${esc(email)}', '${esc(phone)}', '${esc(b.business_name)}', '${esc(address)}', ${wheelCount}, '${addr.lat}', '${addr.lng}', '${esc(status)}', '${esc(priority)}', '${esc(notes)}'
-        );
-      `);
-    }
-    console.log("✅ 20 pickup requests created");
+    // End of tenant-specific seeding
   }
 }
 

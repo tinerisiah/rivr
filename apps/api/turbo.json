@@ -1,5 +1,11 @@
 {
   "extends": ["//"],
+  "globalEnv": [
+    "DATABASE_URL",
+    "MAILTRAP_TOKEN",
+    "MAILTRAP_FROM_EMAIL",
+    "MAILTRAP_FROM_NAME"
+  ],
   "tasks": {
     "build": {
       "env": ["PORT"],

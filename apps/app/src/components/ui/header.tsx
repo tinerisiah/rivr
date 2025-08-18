@@ -90,6 +90,12 @@ export function Header({
           label: "Admin Portal",
           icon: Shield,
         };
+      case "employee_viewer":
+        return {
+          href: "/business-admin",
+          label: "Employee Portal",
+          icon: User,
+        };
       default:
         return null;
     }
@@ -213,6 +219,14 @@ export function Header({
                     >
                       <Truck className="w-4 h-4 mr-2" />
                       Driver Portal
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      onClick={() => router.push("/employee")}
+                    >
+                      <Building2 className="w-4 h-4 mr-2" />
+                      Employee Portal
                     </Button>
                   </div>
                 )}

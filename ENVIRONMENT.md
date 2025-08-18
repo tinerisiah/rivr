@@ -45,11 +45,10 @@ ENFORCE_TENANT=false
 # ALLOWED_ORIGINS=https://rivr-front-dev.onrender.com,https://rivr-front-prod.onrender.com
 ALLOWED_ORIGINS=
 
-# Email (optional until automation is wired)
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USER=
-SMTP_PASS=
+# Email (use Mailtrap; leave unset for no-op in dev)
+MAILTRAP_TOKEN=
+MAILTRAP_FROM_EMAIL=no-reply@rivr.app
+MAILTRAP_FROM_NAME=RIVR
 
 # Stripe (enable when billing is implemented)
 STRIPE_SECRET_KEY=

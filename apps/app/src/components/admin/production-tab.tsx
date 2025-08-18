@@ -19,6 +19,7 @@ import { ProductionViewDialog } from "./production-view-dialog";
 
 interface ProductionTabProps {
   requests: PickupRequest[];
+  readOnly?: boolean;
   onUpdateProductionStatus: (requestId: number, status: string) => void;
   onExportReport: () => void;
   onViewJobDetails: (request: PickupRequest) => void;
@@ -26,6 +27,7 @@ interface ProductionTabProps {
 
 export function ProductionTab({
   requests,
+  readOnly = false,
   onUpdateProductionStatus,
   onExportReport,
   onViewJobDetails,
@@ -187,14 +189,16 @@ export function ProductionTab({
           </div>
 
           {/* Export Button */}
-          <Button
-            onClick={onExportReport}
-            size="sm"
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1"
-          >
-            <FileText className="w-3 h-3 mr-2" />
-            Export Report
-          </Button>
+          {!readOnly && (
+            <Button
+              onClick={onExportReport}
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1"
+            >
+              <FileText className="w-3 h-3 mr-2" />
+              Export Report
+            </Button>
+          )}
         </div>
       </div>
 
@@ -303,16 +307,18 @@ export function ProductionTab({
                         </p>
                       </div>
                     </div>
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onUpdateProductionStatus(request.id, "in_process");
-                      }}
-                      size="sm"
-                      className="bg-yellow-500 w-full hover:bg-yellow-600 text-white text-xs px-2 py-1"
-                    >
-                      Start Process
-                    </Button>
+                    {!readOnly && (
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdateProductionStatus(request.id, "in_process");
+                        }}
+                        size="sm"
+                        className="bg-yellow-500 w-full hover:bg-yellow-600 text-white text-xs px-2 py-1"
+                      >
+                        Start Process
+                      </Button>
+                    )}
                     <Badge
                       variant="secondary"
                       className="bg-red-100 text-red-700 border-red-300 w-full justify-center"
@@ -363,19 +369,21 @@ export function ProductionTab({
                         </p>
                       </div>
                     </div>
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onUpdateProductionStatus(
-                          request.id,
-                          "ready_for_delivery"
-                        );
-                      }}
-                      size="sm"
-                      className="bg-orange-500 w-full hover:bg-orange-600 text-white text-xs px-2 py-1"
-                    >
-                      Mark Ready
-                    </Button>
+                    {!readOnly && (
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdateProductionStatus(
+                            request.id,
+                            "ready_for_delivery"
+                          );
+                        }}
+                        size="sm"
+                        className="bg-orange-500 w-full hover:bg-orange-600 text-white text-xs px-2 py-1"
+                      >
+                        Mark Ready
+                      </Button>
+                    )}
                     <Badge
                       variant="secondary"
                       className="bg-yellow-100 text-yellow-700 border-yellow-300 w-full justify-center"
@@ -426,16 +434,18 @@ export function ProductionTab({
                         </p>
                       </div>
                     </div>
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onUpdateProductionStatus(request.id, "ready_to_bill");
-                      }}
-                      size="sm"
-                      className="bg-orange-700 w-full hover:bg-orange-900 text-white text-xs px-2 py-1"
-                    >
-                      Mark Delivered
-                    </Button>
+                    {!readOnly && (
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdateProductionStatus(request.id, "ready_to_bill");
+                        }}
+                        size="sm"
+                        className="bg-orange-700 w-full hover:bg-orange-900 text-white text-xs px-2 py-1"
+                      >
+                        Mark Delivered
+                      </Button>
+                    )}
                     <Badge
                       variant="secondary"
                       className="bg-orange-100 text-orange-700 border-orange-300 w-full justify-center"
@@ -486,16 +496,18 @@ export function ProductionTab({
                         </p>
                       </div>
                     </div>
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onUpdateProductionStatus(request.id, "billed");
-                      }}
-                      size="sm"
-                      className="bg-blue-500 w-full hover:bg-blue-600 text-white text-xs px-2 py-1"
-                    >
-                      Mark Billed
-                    </Button>
+                    {!readOnly && (
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdateProductionStatus(request.id, "billed");
+                        }}
+                        size="sm"
+                        className="bg-blue-500 w-full hover:bg-blue-600 text-white text-xs px-2 py-1"
+                      >
+                        Mark Billed
+                      </Button>
+                    )}
                     <Badge
                       variant="secondary"
                       className="bg-blue-100 text-blue-700 border-blue-300 w-full justify-center"
@@ -840,6 +852,7 @@ export function ProductionTab({
         onClose={handleCloseDialog}
         request={selectedRequest}
         onUpdateProductionStatus={handleUpdateStatus}
+        readOnly={readOnly}
       />
     </div>
   );

@@ -12,7 +12,7 @@ export function buildApiUrl(endpoint: string): string {
 }
 
 // Enhanced API request function with base URL
-export async function apiRequest(
+export async function coreApiRequest(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<Response> {
@@ -95,10 +95,34 @@ export async function authenticatedApiRequest(
     ...options,
   };
 
-  const response = await apiRequest(endpoint, config);
+  const response = await coreApiRequest(endpoint, config);
   const data = await response.json();
 
   return data;
+}
+
+// Lightweight wrapper for components expecting Response-style methods
+export async function apiRequest(
+  method: "GET" | "POST" | "PUT" | "DELETE",
+  endpoint: string,
+  body?: any
+) {
+  const resp = await fetch(buildApiUrl(endpoint), {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(typeof window !== "undefined" && localStorage.getItem("accessToken")
+        ? { Authorization: `Bearer ${localStorage.getItem("accessToken")}` }
+        : {}),
+    },
+    credentials: "include",
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!resp.ok) {
+    const text = (await resp.text()) || resp.statusText;
+    throw new Error(`${resp.status}: ${text}`);
+  }
+  return resp;
 }
 
 // Business settings API functions

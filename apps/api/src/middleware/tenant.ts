@@ -38,6 +38,9 @@ export async function tenantMiddleware(
       "/api/auth/health",
       "/api/auth/admin/login", // Allow admin login without tenant resolution
       "/api/auth/profile",
+      // Password reset flows (public)
+      "/api/auth/forgot-password",
+      "/api/auth/reset-password",
       "/api/public/businesses", // Allow public businesses listing without tenant resolution
     ]);
     if (publicPaths.has(req.path)) {

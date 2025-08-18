@@ -18,6 +18,7 @@ import {
 } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import Link from "next/link";
 
 // Base schema for credentials. We conditionally extend it with `tenant`
 // for non-admin logins so the tenant value is preserved by the resolver.
@@ -30,7 +31,7 @@ type BaseLoginFormData = z.infer<typeof baseLoginSchema>;
 type LoginFormData = BaseLoginFormData & { tenant?: string };
 
 interface LoginFormProps {
-  type: "business" | "rivr_admin" | "driver";
+  type: "business" | "rivr_admin" | "driver" | "employee";
   onSuccess?: () => void;
   onSwitchToRegister?: () => void;
 }
@@ -111,13 +112,17 @@ export function LoginForm({
       ? "Business Login"
       : type === "rivr_admin"
         ? "Admin Login"
-        : "Driver Login";
+        : type === "employee"
+          ? "Employee Login"
+          : "Driver Login";
   const description =
     type === "business"
       ? "Sign in to your business account"
       : type === "rivr_admin"
         ? "Sign in to RIVR admin portal"
-        : "Sign in to your driver account";
+        : type === "employee"
+          ? "Sign in to your employee account"
+          : "Sign in to your driver account";
 
   return (
     <Card className="w-full max-w-md mx-auto">
@@ -197,6 +202,15 @@ export function LoginForm({
             {errors.password && (
               <p className="text-sm text-red-500">{errors.password.message}</p>
             )}
+          </div>
+
+          <div className="flex items-center justify-end -mt-2">
+            <Link
+              href="/auth/forgot"
+              className="text-sm text-muted-foreground hover:underline"
+            >
+              Forgot password?
+            </Link>
           </div>
 
           <Button type="submit" className="w-full" disabled={isLoading}>

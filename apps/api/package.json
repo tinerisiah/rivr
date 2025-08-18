@@ -13,9 +13,7 @@
     "db:push": "drizzle-kit push",
     "seed": "tsx scripts/seed.ts",
     "seed:auth": "tsx scripts/seed.ts auth",
-    "seed:full": "tsx scripts/seed.ts",
-    "tenant:create": "tsx scripts/create-tenant-schema.ts",
-    "tenant:seed": "tsx scripts/migrate-initial-tenant-seed.ts"
+    "seed:full": "tsx scripts/seed.ts"
   },
   "jest": {
     "preset": "@repo/jest-presets/node"
@@ -25,7 +23,6 @@
     "@neondatabase/serverless": "^0.10.4",
     "@repo/logger": "workspace:*",
     "@repo/schema": "workspace:*",
-    "@sendgrid/mail": "^8.1.5",
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.9",
     "@types/jsonwebtoken": "^9.0.10",
@@ -40,6 +37,7 @@
     "express-rate-limit": "^7.1.5",
     "express-session": "^1.18.1",
     "jsonwebtoken": "^9.0.2",
+    "mailtrap": "^4.2.0",
     "morgan": "^1.10.0",
     "ws": "^8.18.3",
     "zod": "^3.25.76"

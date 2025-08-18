@@ -34,6 +34,7 @@ interface ProductionViewDialogProps {
   onClose: () => void;
   request: PickupRequest | null;
   onUpdateProductionStatus: (requestId: number, status: string) => void;
+  readOnly?: boolean;
 }
 
 export function ProductionViewDialog({
@@ -41,6 +42,7 @@ export function ProductionViewDialog({
   onClose,
   request,
   onUpdateProductionStatus,
+  readOnly = false,
 }: ProductionViewDialogProps) {
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -163,7 +165,7 @@ export function ProductionViewDialog({
               >
                 {getStatusLabel(request.productionStatus || "pending")}
               </Badge>
-              {nextStatus && (
+              {nextStatus && !readOnly && (
                 <Button
                   onClick={() => handleStatusUpdate(nextStatus.status)}
                   disabled={isUpdating}
@@ -501,7 +503,7 @@ export function ProductionViewDialog({
             <Button variant="outline" onClick={onClose}>
               Close
             </Button>
-            {nextStatus && (
+            {nextStatus && !readOnly && (
               <Button
                 onClick={() => handleStatusUpdate(nextStatus.status)}
                 disabled={isUpdating}

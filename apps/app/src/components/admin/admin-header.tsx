@@ -5,6 +5,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Truck, ExternalLink, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useIsMobile } from "@/hooks";
+import { useAuth } from "@/lib/auth";
+import { Badge } from "../ui";
 
 interface AdminHeaderProps {
   title: string;
@@ -28,6 +30,7 @@ export function AdminHeader({
   customerLinkText = "Customer View",
 }: AdminHeaderProps) {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
   return (
     <div className="flex flex-row justify-between items-start sm:items-center gap-4">
       <div className="flex flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
@@ -36,9 +39,14 @@ export function AdminHeader({
           <h1 className="mobile-title text-foreground mb-1 tracking-wide line-clamp-1">
             {title}
           </h1>
-          <p className="text-muted-foreground mobile-caption tracking-wide line-clamp-1">
-            {subtitle}
-          </p>
+          <div className="flex flex-row items-center gap-2">
+            <p className="text-muted-foreground mobile-caption tracking-wide line-clamp-1">
+              Welcome, {user?.name}
+            </p>
+            <Badge variant="outline">
+              {user?.role.replaceAll("_", " ").toLowerCase()}
+            </Badge>
+          </div>
         </div>
       </div>
       <div className="mobile-flex-row sm:w-auto flex gap-2 items-center">

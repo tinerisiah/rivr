@@ -15,9 +15,9 @@ export function AuthPageContent() {
   const searchParams = useSearchParams();
   const { isAuthenticated, user } = useAuth();
   const [showRegister, setShowRegister] = useState(false);
-  const [type, setType] = useState<"business" | "rivr_admin" | "driver">(
-    "business"
-  );
+  const [type, setType] = useState<
+    "business" | "rivr_admin" | "driver" | "employee"
+  >("business");
 
   const { subdomain } = useTenant();
 
@@ -29,6 +29,9 @@ export function AuthPageContent() {
       return;
     } else if (role === "driver") {
       setType("driver");
+      return;
+    } else if (role === "employee_viewer") {
+      setType("employee");
       return;
     }
   }, [searchParams, router]);
@@ -45,6 +48,9 @@ export function AuthPageContent() {
           break;
         case "driver":
           router.push("/driver");
+          break;
+        case "employee_viewer":
+          router.push("/business-admin");
           break;
         default:
           router.push("/");

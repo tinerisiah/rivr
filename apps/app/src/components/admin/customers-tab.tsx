@@ -23,6 +23,7 @@ interface CustomersTabProps {
   customers: Customer[];
   requests: PickupRequest[];
   loadingCustomers: boolean;
+  readOnly?: boolean;
   onAddCustomer: () => void;
   onEditCustomer: (customer: Customer) => void;
   onCopyLink: (token: string) => void;
@@ -34,6 +35,7 @@ export function CustomersTab({
   customers,
   requests,
   loadingCustomers,
+  readOnly = false,
   onAddCustomer,
   onEditCustomer,
   onCopyLink,
@@ -75,13 +77,15 @@ export function CustomersTab({
         <h2 className="text-lg sm:text-xl font-bold text-foreground tracking-wide">
           Customer CRM
         </h2>
-        <Button
-          onClick={onAddCustomer}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm sm:text-base w-full sm:w-auto"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          ADD CUSTOMER
-        </Button>
+        {!readOnly && (
+          <Button
+            onClick={onAddCustomer}
+            className="bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm sm:text-base w-full sm:w-auto"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            ADD CUSTOMER
+          </Button>
+        )}
       </div>
 
       {/* Search Bar */}
@@ -201,26 +205,28 @@ export function CustomersTab({
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-                      <Button
-                        onClick={() => onEditCustomer(customer)}
-                        variant="outline"
-                        size="sm"
-                        className="border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white text-xs"
-                      >
-                        <Edit className="w-3 h-3 mr-1" />
-                        Edit
-                      </Button>
-                      <Button
-                        onClick={() => onEmailCustomer(customer)}
-                        variant="outline"
-                        size="sm"
-                        className="border-green-500 text-green-500 hover:bg-green-500 hover:text-white text-xs"
-                      >
-                        <Mail className="w-3 h-3 mr-1" />
-                        Email
-                      </Button>
-                    </div>
+                    {!readOnly && (
+                      <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                        <Button
+                          onClick={() => onEditCustomer(customer)}
+                          variant="outline"
+                          size="sm"
+                          className="border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white text-xs"
+                        >
+                          <Edit className="w-3 h-3 mr-1" />
+                          Edit
+                        </Button>
+                        <Button
+                          onClick={() => onEmailCustomer(customer)}
+                          variant="outline"
+                          size="sm"
+                          className="border-green-500 text-green-500 hover:bg-green-500 hover:text-white text-xs"
+                        >
+                          <Mail className="w-3 h-3 mr-1" />
+                          Email
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
