@@ -14,7 +14,10 @@ import { authenticateToken } from "../auth";
 import { requirePermission, requireTenantMatch } from "../auth/rbac";
 import { db } from "../db";
 import { businesses, insertBusinessEmployeeSchema } from "@repo/schema";
-import { provisionTenantSchema } from "../lib/tenant-db";
+import {
+  provisionTenantSchema,
+  deriveTenantSchemaFromSubdomain,
+} from "../lib/tenant-db";
 
 export function registerAdminRoutes(app: Express) {
   // Customer management routes (tenant-scoped)
@@ -716,7 +719,17 @@ export function registerAdminRoutes(app: Express) {
     async (req, res) => {
       try {
         const storage = getStorage(req);
-        const businessData = insertBusinessSchema.parse(req.body);
+        // Allow callers to omit databaseSchema; derive from subdomain when absent
+        const incoming = req.body as any;
+        const payload = {
+          ...incoming,
+          databaseSchema:
+            typeof incoming?.databaseSchema === "string" &&
+            incoming.databaseSchema.trim().length > 0
+              ? incoming.databaseSchema
+              : deriveTenantSchemaFromSubdomain(incoming?.subdomain ?? ""),
+        };
+        const businessData = insertBusinessSchema.parse(payload);
         const business = await storage.createBusiness(businessData);
 
         // Provision tenant schema immediately for the newly created business

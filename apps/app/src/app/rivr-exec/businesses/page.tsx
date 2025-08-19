@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AdminProtectedRoute } from "@/components/auth/protected-route";
 import { BusinessesTab } from "@/components/admin/businesses-tab";
 import { BusinessForm } from "@/components/admin/business-form";
-import { authenticatedApiRequest, apiRequest } from "@/lib/api";
+import { authenticatedApiRequest } from "@/lib/api";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -28,14 +28,14 @@ export default function RivrExecBusinessesPage() {
       businessId: number;
       status: string;
     }) => {
-      const response = await authenticatedApiRequest(
+      const data = await authenticatedApiRequest(
         `/api/admin/businesses/${businessId}/status`,
         {
           method: "PUT",
           body: JSON.stringify({ status }),
         }
       );
-      return response.json();
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
@@ -45,7 +45,8 @@ export default function RivrExecBusinessesPage() {
         variant: "default",
       });
     },
-    onError: () => {
+    onError: (error) => {
+      console.log("Error updating business status", error);
       toast({
         title: "Error",
         description: "Failed to update business status",
@@ -56,13 +57,19 @@ export default function RivrExecBusinessesPage() {
 
   const createBusinessMutation = useMutation({
     mutationFn: async (businessData: any) => {
-      const response = await authenticatedApiRequest("/api/admin/businesses", {
-        method: "POST",
-        body: JSON.stringify(businessData),
-      });
-      return response.json();
+      try {
+        const data = await authenticatedApiRequest("/api/admin/businesses", {
+          method: "POST",
+          body: JSON.stringify(businessData),
+        });
+        return data;
+      } catch (error) {
+        console.log("Error creating business", error);
+        throw error;
+      }
     },
     onSuccess: () => {
+      console.log("Business created");
       queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
       toast({
         title: "Business Created",
@@ -71,12 +78,17 @@ export default function RivrExecBusinessesPage() {
       });
       setShowBusinessForm(false);
     },
-    onError: () => {
+    onError: (error) => {
+      console.log("Error creating business", error);
       toast({
         title: "Error",
         description: "Failed to create business",
         variant: "destructive",
       });
+    },
+    onSettled: () => {
+      console.log("Business created");
+      setShowBusinessForm(false);
     },
   });
 
@@ -87,8 +99,9 @@ export default function RivrExecBusinessesPage() {
     updateBusinessStatusMutation.mutate({ businessId, status: "suspended" });
   const handleCancelBusiness = (businessId: number) =>
     updateBusinessStatusMutation.mutate({ businessId, status: "canceled" });
-  const handleBusinessSubmit = (businessData: any) =>
+  const handleBusinessSubmit = (businessData: any) => {
     createBusinessMutation.mutate(businessData);
+  };
 
   return (
     <AdminProtectedRoute>

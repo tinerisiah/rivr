@@ -165,6 +165,7 @@ export function RivrExecPortal() {
         description: "Business account created successfully",
         variant: "default",
       });
+      setShowBusinessForm(false);
     },
     onError: () => {
       toast({

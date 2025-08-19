@@ -33,6 +33,31 @@ export function getTenantDb(req: Request): {
 }
 
 /**
+ * Derive a safe PostgreSQL schema name from a subdomain.
+ * - lowercases
+ * - replaces invalid characters with underscores
+ * - ensures it starts with a letter by prefixing with "t_" if needed
+ * - prefixes with "tenant_"
+ * - truncates to PostgreSQL identifier limit (63 bytes)
+ */
+export function deriveTenantSchemaFromSubdomain(subdomain: string): string {
+  const lower = String(subdomain || "")
+    .toLowerCase()
+    .trim();
+  // Replace any character that is not a-z, 0-9 or underscore with underscore
+  let cleaned = lower.replace(/[^a-z0-9_]/g, "_");
+  // Collapse multiple underscores
+  cleaned = cleaned.replace(/_+/g, "_").replace(/^_+/, "");
+  // Ensure starts with a letter
+  if (!/^[a-z]/.test(cleaned)) {
+    cleaned = `t_${cleaned}`;
+  }
+  const prefixed = `tenant_${cleaned}`;
+  // Postgres identifier max length is 63 bytes
+  return prefixed.length <= 63 ? prefixed : prefixed.slice(0, 63);
+}
+
+/**
  * Run a function within a tenant-scoped transaction by setting search_path.
  * For Neon HTTP, transactions are supported; `SET LOCAL` applies to the tx.
  */

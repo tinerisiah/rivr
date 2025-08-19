@@ -181,8 +181,8 @@ export function BusinessForm({
                   <p className="text-xs text-muted-foreground">
                     This will create:{" "}
                     {field.value
-                      ? `${field.value}.rivr.com`
-                      : "subdomain.rivr.com"}
+                      ? `${field.value}.${process.env.NEXT_PUBLIC_BASE_DOMAIN}`
+                      : process.env.NEXT_PUBLIC_BASE_DOMAIN}
                   </p>
                 </FormItem>
               )}
