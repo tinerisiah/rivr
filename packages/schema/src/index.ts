@@ -212,6 +212,8 @@ export const customers = pgTable(
     phone: text("phone"),
     businessName: text("business_name").notNull(),
     address: text("address").notNull(),
+    // Optional password enables registered customer logins; when null, treated as guest
+    password: text("password"),
     accessToken: text("access_token").notNull().unique(),
     emailUpdatesEnabled: boolean("email_updates_enabled")
       .default(false)

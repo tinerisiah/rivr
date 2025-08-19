@@ -344,7 +344,13 @@ export function registerAuthRoutes(app: Express) {
       const schema = z.object({
         email: z.string().email(),
         role: z
-          .enum(["business_owner", "rivr_admin", "driver", "employee_viewer"])
+          .enum([
+            "business_owner",
+            "rivr_admin",
+            "driver",
+            "employee_viewer",
+            "customer",
+          ])
           .optional(),
       });
       const { email, role } = schema.parse(req.body);
@@ -373,6 +379,7 @@ export function registerAuthRoutes(app: Express) {
         | "rivr_admin"
         | "driver"
         | "employee_viewer"
+        | "customer"
         | null = role || null;
       let userId: number | undefined;
       let tenantId: number | undefined;
@@ -420,6 +427,27 @@ export function registerAuthRoutes(app: Express) {
         }
       }
 
+      // Resolve customer within tenant context
+      if (
+        (!resolvedRole || resolvedRole === "customer") &&
+        (req as any).businessId
+      ) {
+        const { customers } = await import("@repo/schema");
+        const customerRow = await withTenantDb(req as any, async (tx) => {
+          const rows = await tx
+            .select()
+            .from(customers)
+            .where(eq(customers.email, email))
+            .limit(1);
+          return rows[0];
+        });
+        if (customerRow) {
+          resolvedRole = "customer";
+          userId = (customerRow as any).id;
+          tenantId = (req as any).businessId as number;
+        }
+      }
+
       if (
         (!resolvedRole || resolvedRole === "employee_viewer") &&
         (req as any).businessId
@@ -443,8 +471,6 @@ export function registerAuthRoutes(app: Express) {
           tenantId = (req as any).businessId as number;
         }
       }
-
-      log("resolvedRole", { resolvedRole, userId, tenantId });
 
       // Do not issue employee/driver reset tokens without a tenant context
       if (
@@ -542,7 +568,8 @@ export function registerAuthRoutes(app: Express) {
         | "business_owner"
         | "rivr_admin"
         | "driver"
-        | "employee_viewer";
+        | "employee_viewer"
+        | "customer";
 
       if (role === "rivr_admin") {
         const [admin] = await db
@@ -670,6 +697,40 @@ export function registerAuthRoutes(app: Express) {
             "employee_viewer",
             reset.tenantId || undefined
           );
+        }
+      } else if (role === "customer") {
+        if (!reset.tenantId) {
+          return res.status(400).json({
+            success: false,
+            message: "Missing tenant for customer reset",
+          });
+        }
+        const [bizSchema] = await db
+          .select({ schema: businesses.databaseSchema })
+          .from(businesses)
+          .where(eq(businesses.id, reset.tenantId as any))
+          .limit(1);
+        if (!bizSchema?.schema) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Unknown tenant" });
+        }
+        const { customers } = await import("@repo/schema");
+        const hashed = await hashPassword(newPassword);
+        try {
+          await db.transaction(async (tx) => {
+            await tx.execute(`SET LOCAL search_path TO ${bizSchema.schema}`);
+            await (tx as any)
+              .update(customers)
+              .set({ password: hashed })
+              .where(eq(customers.email, reset.email));
+          });
+        } catch (e) {
+          await db.execute(`SET search_path TO ${bizSchema.schema}`);
+          await (db as any)
+            .update(customers)
+            .set({ password: hashed } as any)
+            .where(eq(customers.email, reset.email));
         }
       } else {
         return res

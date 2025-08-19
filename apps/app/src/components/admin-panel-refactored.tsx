@@ -295,6 +295,7 @@ export function AdminPanelRefactored({
   const { data: emailLogsData, isLoading: loadingEmailLogs } = useQuery({
     queryKey: ["/api/admin/email-logs"],
     enabled: showEmailLogsModal,
+    refetchInterval: 10000,
   });
 
   const createTemplateMutation = useMutation({

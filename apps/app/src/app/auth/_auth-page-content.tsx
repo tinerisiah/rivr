@@ -9,6 +9,8 @@ import { RegisterForm } from "../../components/auth/register-form";
 import { Button } from "../../components/ui/button";
 import { useAuth } from "../../lib/auth";
 import { useTenant } from "@/lib/tenant-context";
+import { CustomerLogin } from "../../components/auth/customer-login";
+import { CustomerRegister } from "../../components/auth/customer-register";
 
 export function AuthPageContent() {
   const router = useRouter();
@@ -16,7 +18,7 @@ export function AuthPageContent() {
   const { isAuthenticated, user } = useAuth();
   const [showRegister, setShowRegister] = useState(false);
   const [type, setType] = useState<
-    "business" | "rivr_admin" | "driver" | "employee"
+    "business" | "rivr_admin" | "driver" | "employee" | "customer"
   >("business");
 
   const { subdomain } = useTenant();
@@ -32,6 +34,9 @@ export function AuthPageContent() {
       return;
     } else if (role === "employee_viewer") {
       setType("employee");
+      return;
+    } else if (role === "customer") {
+      setType("customer");
       return;
     }
   }, [searchParams, router]);
@@ -84,7 +89,7 @@ export function AuthPageContent() {
         <Header minimal />
 
         {/* Authentication Forms */}
-        {(!subdomain || type === "driver") && (
+        {(!subdomain || type === "driver" || type === "customer") && (
           <div className="flex justify-center mb-8">
             <div className="flex space-x-1 bg-muted p-1 rounded-lg">
               <Button
@@ -107,7 +112,13 @@ export function AuthPageContent() {
 
         {/* Authentication Forms */}
         <div className="flex justify-center">
-          {!showRegister ? (
+          {type === "customer" ? (
+            !showRegister ? (
+              <CustomerLogin />
+            ) : (
+              <CustomerRegister />
+            )
+          ) : !showRegister ? (
             <LoginForm
               type={type}
               onSuccess={handleLoginSuccess}

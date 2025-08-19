@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/form";
 import { useTenant } from "@/lib/tenant-context";
 import { AlertTriangle, CheckCircle, MapPin } from "lucide-react";
+import { apiRequest as rawApiRequest } from "@/lib/queryClient";
 
 export type CombinedServiceRequestData = {
   firstName: string;
@@ -205,6 +206,34 @@ export default function ServiceRequestModal({
       const sub = values.businessSubdomain?.trim();
       if (typeof window !== "undefined" && sub) {
         window.localStorage.setItem("tenant_subdomain", sub);
+      }
+      // If user fields disabled (editing) or we already have a customer_token, just submit
+      const hasReadableCustomerCookie =
+        typeof document !== "undefined" &&
+        document.cookie.includes("customer_token=");
+      if (!disableUserFields && !hasReadableCustomerCookie) {
+        // Ask the user whether to register or continue as guest
+        const wantsAccount =
+          typeof window !== "undefined"
+            ? window.confirm(
+                "Create an account to save your info for next time?"
+              )
+            : false;
+        if (wantsAccount) {
+          try {
+            await rawApiRequest("POST", "/api/auth/customer/register", {
+              firstName: values.firstName,
+              lastName: values.lastName,
+              email: values.email,
+              phone: values.phone,
+              businessName: values.businessName,
+              address: values.address,
+              password: Math.random().toString(36).slice(2) + "A1",
+            });
+          } catch {
+            // if registration fails, fallback to guest
+          }
+        }
       }
       await onSubmit(values);
       form.reset({

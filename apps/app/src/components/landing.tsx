@@ -133,7 +133,7 @@ export function Landing() {
       }
 
       // Set in-memory user info for footer display (no localStorage)
-      setUserData({
+      const nextUser: UserInfo = {
         firstName: details.firstName,
         lastName: details.lastName,
         email: details.email,
@@ -142,7 +142,14 @@ export function Landing() {
         address: details.address,
         roNumber: details.roNumber,
         customerNotes: details.notes,
-      });
+      };
+      setUserData(nextUser);
+      try {
+        window.localStorage.setItem(
+          "customer_form_data",
+          JSON.stringify(nextUser)
+        );
+      } catch {}
 
       toast({
         title: "Request Submitted",
@@ -173,12 +180,39 @@ export function Landing() {
   };
 
   const handleServiceClick = () => {
+    // Always start a fresh request when using the main CTA
+    setEditingRequest(null);
     setShowServiceDetails(true);
   };
   // Load existing requests if a session exists
   React.useEffect(() => {
     (async () => {
       try {
+        // Prefill from local storage first if present
+        if (typeof window !== "undefined" && !userData) {
+          try {
+            const stored = window.localStorage.getItem("customer_form_data");
+            if (stored) {
+              const parsed = JSON.parse(stored) as UserInfo;
+              setUserData(parsed);
+            }
+          } catch {}
+        }
+        // Prefill from server session if available
+        const profileRes = await apiRequest("GET", "/api/customer/profile");
+        const profileJson = (await profileRes.json()) as
+          | { success: true; customer: UserInfo }
+          | { success: false };
+        if ((profileJson as any)?.success && (profileJson as any).customer) {
+          const c = (profileJson as any).customer as UserInfo;
+          setUserData(c);
+          try {
+            window.localStorage.setItem(
+              "customer_form_data",
+              JSON.stringify(c)
+            );
+          } catch {}
+        }
         const res = await apiRequest("GET", "/api/customer/requests");
         const json = (await res.json()) as {
           success: boolean;
@@ -210,6 +244,24 @@ export function Landing() {
           json?.message ||
           "Quote request submitted successfully. We'll get back to you soon.",
       });
+      // Persist partial info for future prefill
+      const nextUser: UserInfo = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        phone: data.phone,
+        businessName: data.businessName,
+        address: userData?.address || "",
+        roNumber: userData?.roNumber,
+        customerNotes: userData?.customerNotes,
+      };
+      setUserData(nextUser);
+      try {
+        window.localStorage.setItem(
+          "customer_form_data",
+          JSON.stringify(nextUser)
+        );
+      } catch {}
       setShowQuoteForm(false);
     } catch {
       toast({
@@ -398,12 +450,15 @@ export function Landing() {
                         className="flex items-start justify-between p-3 rounded-md border border-border"
                       >
                         <div className="text-left">
-                          <div className="font-medium text-foreground">
-                            {r.businessName}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
+                          <p className="font-medium text-foreground">
+                            {r.firstName} {r.lastName}
+                          </p>
+                          <span className="text-xs text-muted-foreground">
+                            {r.email}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
                             {r.address}
-                          </div>
+                          </span>
                           <div className="text-xs text-muted-foreground">
                             RO: {r.roNumber || "—"}
                           </div>
@@ -529,6 +584,7 @@ export function Landing() {
             >
               Business Portal
             </Button>
+
             <Button
               variant="ghost"
               size="sm"
@@ -554,6 +610,17 @@ export function Landing() {
         isOpen={showQuoteForm}
         onClose={() => setShowQuoteForm(false)}
         onSubmit={handleQuoteSubmit}
+        initialData={
+          userData
+            ? {
+                firstName: userData.firstName,
+                lastName: userData.lastName,
+                email: userData.email,
+                phone: userData.phone,
+                businessName: userData.businessName,
+              }
+            : undefined
+        }
       />
 
       <ServiceRequestModal
@@ -607,7 +674,18 @@ export function Landing() {
                 roNumber: editingRequest.roNumber || undefined,
                 notes: editingRequest.deliveryNotes || undefined,
               }
-            : undefined
+            : userData
+              ? {
+                  firstName: userData.firstName,
+                  lastName: userData.lastName,
+                  email: userData.email,
+                  phone: userData.phone,
+                  businessName: userData.businessName,
+                  address: userData.address,
+                  roNumber: userData.roNumber,
+                  notes: userData.customerNotes,
+                }
+              : undefined
         }
         disableUserFields={!!editingRequest}
       />

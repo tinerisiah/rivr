@@ -1,18 +1,30 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { z } from "zod";
 import { log } from "@repo/logger";
 import { getStorage } from "../storage";
-import { insertCustomerSchema, insertQuoteRequestSchema } from "@repo/schema";
+import {
+  insertCustomerSchema,
+  insertQuoteRequestSchema,
+  type InsertCustomer,
+  type Customer,
+} from "@repo/schema";
 import { db } from "../db";
 import { businesses } from "@repo/schema";
 import { asc } from "drizzle-orm";
+import { comparePassword, hashPassword } from "../auth";
 
 export function registerCustomerRoutes(
   app: Express,
   broadcastToDrivers: (message: unknown) => void
 ) {
   // Helper to extract a customer token from various places for flexibility
-  const getCustomerToken = (req: any): string | undefined => {
+  const getCustomerToken = (
+    req: Request & {
+      cookies?: Record<string, string>;
+      headers?: Record<string, unknown>;
+      query?: Record<string, unknown>;
+    }
+  ): string | undefined => {
     const cookieToken =
       (req.cookies?.["customer_token"] as string | undefined) || undefined;
     const headerToken =
@@ -153,6 +165,165 @@ export function registerCustomerRoutes(
           message: "Failed to submit pickup request",
         });
       }
+    }
+  });
+
+  // Customer registration (optional account for future logins)
+  app.post("/api/auth/customer/register", async (req, res) => {
+    try {
+      const storage = getStorage(req);
+      const schema = insertCustomerSchema.extend({
+        password: z.string().min(6),
+      });
+      const payload = schema.parse(req.body || {});
+
+      const existing = await storage.getCustomerByEmail(payload.email);
+      const existingWithPassword = existing as unknown as {
+        password?: string | null;
+      };
+      if (existing && existingWithPassword.password) {
+        return res
+          .status(409)
+          .json({ success: false, message: "Email already registered" });
+      }
+
+      const values: InsertCustomer = { ...(payload as InsertCustomer) };
+      (values as unknown as { password?: string }).password =
+        await hashPassword(payload.password);
+      const created = existing
+        ? await storage.updateCustomer(existing.id, values)
+        : await storage.createCustomer(values);
+
+      if (!created) {
+        return res
+          .status(500)
+          .json({ success: false, message: "Failed to create customer" });
+      }
+
+      // Persist cookie customer_token for prefill/session
+      const isProdEnv =
+        (process.env.NODE_ENV || "development") === "production";
+      res.cookie("customer_token", created.accessToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: isProdEnv,
+        maxAge: 1000 * 60 * 60 * 24 * 180,
+        path: "/",
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: "Customer registered successfully",
+        customerToken: created.accessToken,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid registration data",
+          errors: error.errors,
+        });
+      }
+      log("error", "Customer registration failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res
+        .status(500)
+        .json({ success: false, message: "Registration failed" });
+    }
+  });
+
+  // Customer login
+  app.post("/api/auth/customer/login", async (req, res) => {
+    try {
+      const schema = z.object({
+        email: z.string().email(),
+        password: z.string().min(6),
+      });
+      const { email, password } = schema.parse(req.body || {});
+      const storage = getStorage(req);
+      const existing = (await storage.getCustomerByEmail(
+        email
+      )) as Customer | null;
+      const existingWithPassword = existing as unknown as {
+        password?: string | null;
+      };
+      if (!existing || !existingWithPassword.password) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Invalid credentials" });
+      }
+      const ok = await comparePassword(
+        password,
+        existingWithPassword.password || ""
+      );
+      if (!ok) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Invalid credentials" });
+      }
+      const isProdEnv =
+        (process.env.NODE_ENV || "development") === "production";
+      res.cookie("customer_token", existing.accessToken, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: isProdEnv,
+        maxAge: 1000 * 60 * 60 * 24 * 180,
+        path: "/",
+      });
+      return res.json({ success: true, customerToken: existing.accessToken });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid login data",
+          errors: error.errors,
+        });
+      }
+      log("error", "Customer login failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res
+        .status(500)
+        .json({ success: false, message: "Authentication failed" });
+    }
+  });
+
+  // Get current customer profile (by token header/cookie/query)
+  app.get("/api/customer/profile", async (req, res) => {
+    try {
+      const storage = getStorage(req);
+      const token = getCustomerToken(req);
+      if (!token) {
+        return res
+          .status(401)
+          .json({ success: false, message: "No customer session" });
+      }
+      const customer = await storage.getCustomerByToken(token);
+      if (!customer) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Customer not found" });
+      }
+      return res.json({
+        success: true,
+        customer: {
+          id: customer.id,
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          email: customer.email,
+          phone: customer.phone,
+          businessName: customer.businessName,
+          address: customer.address,
+        },
+      });
+    } catch (error) {
+      log("error", "Fetch customer profile failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res
+        .status(500)
+        .json({ success: false, message: "Failed to fetch profile" });
     }
   });
 

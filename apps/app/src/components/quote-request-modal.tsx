@@ -39,6 +39,7 @@ interface QuoteRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: QuoteInfo) => void;
+  initialData?: Partial<QuoteInfo>;
 }
 
 const quoteFormSchema = z.object({
@@ -57,6 +58,7 @@ export default function QuoteRequestModal({
   isOpen,
   onClose,
   onSubmit,
+  initialData,
 }: QuoteRequestModalProps) {
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -73,6 +75,23 @@ export default function QuoteRequestModal({
       photos: [],
     },
   });
+
+  // Prefill when opening
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!initialData) return;
+    const nextValues: QuoteInfo = {
+      firstName: initialData.firstName || "",
+      lastName: initialData.lastName || "",
+      email: initialData.email || "",
+      phone: initialData.phone || "",
+      businessName: initialData.businessName || "",
+      description: initialData.description || "",
+      photos: Array.isArray(initialData.photos) ? initialData.photos : [],
+    };
+    setUploadedPhotos(nextValues.photos);
+    form.reset(nextValues);
+  }, [form, initialData, isOpen]);
 
   const handleFileUpload = async (
     event: React.ChangeEvent<HTMLInputElement>

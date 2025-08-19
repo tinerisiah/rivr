@@ -73,6 +73,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
       phone text,
       business_name text NOT NULL,
       address text NOT NULL,
+      password text,
       access_token text,
       email_updates_enabled boolean DEFAULT false NOT NULL,
       custom_signature text,
@@ -86,7 +87,8 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     `ALTER TABLE ${schemaName}.customers 
        ADD COLUMN IF NOT EXISTS email_updates_enabled boolean DEFAULT false NOT NULL,
        ADD COLUMN IF NOT EXISTS custom_signature text,
-       ADD COLUMN IF NOT EXISTS custom_logo text;
+       ADD COLUMN IF NOT EXISTS custom_logo text,
+       ADD COLUMN IF NOT EXISTS password text;
     `
   );
 

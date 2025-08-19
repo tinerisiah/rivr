@@ -53,6 +53,17 @@ export async function coreApiRequest(
     if (tenant && tenant !== "www" && tenant !== "localhost") {
       headers["X-Tenant-Subdomain"] = tenant;
     }
+    // Forward customer token when present for session-based prefill
+    const customerTokenCookie = (() => {
+      const match = document.cookie
+        .split(";")
+        .map((c) => c.trim())
+        .find((c) => c.startsWith(`customer_token=`));
+      return match ? decodeURIComponent(match.split("=")[1]) : null;
+    })();
+    if (customerTokenCookie) {
+      headers["X-Customer-Token"] = customerTokenCookie;
+    }
   }
 
   const optionHeaders = options.headers as Record<string, string>;
@@ -139,6 +150,23 @@ export async function updateBusinessSettings(settings: {
   return authenticatedApiRequest("/api/admin/business-settings", {
     method: "PUT",
     body: JSON.stringify(settings),
+  });
+}
+
+// Business core info API functions
+export async function getBusinessInfo(): Promise<any> {
+  return authenticatedApiRequest("/api/admin/business-info");
+}
+
+export async function updateBusinessInfo(info: {
+  businessName?: string;
+  phone?: string;
+  address?: string;
+  customDomain?: string;
+}): Promise<any> {
+  return authenticatedApiRequest("/api/admin/business-info", {
+    method: "PUT",
+    body: JSON.stringify(info),
   });
 }
 

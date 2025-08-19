@@ -44,7 +44,16 @@ import {
   type InsertEmailTemplate,
   type InsertEmailLog,
 } from "@repo/schema";
-import { eq, and, desc, asc, isNull, isNotNull, or } from "drizzle-orm";
+import {
+  eq,
+  and,
+  desc,
+  asc,
+  isNull,
+  isNotNull,
+  or,
+  inArray,
+} from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { hashPassword } from "./auth";
 
@@ -729,6 +738,23 @@ class Storage {
     return business || null;
   }
 
+  async updateBusinessInfo(
+    id: number,
+    updates: Partial<
+      Pick<
+        InsertBusiness,
+        "businessName" | "phone" | "address" | "customDomain"
+      >
+    >
+  ): Promise<Business | null> {
+    const [business] = await db
+      .update(businesses)
+      .set({ ...(updates as any), updatedAt: new Date() })
+      .where(eq(businesses.id, id))
+      .returning();
+    return business || null;
+  }
+
   // Business settings operations
   async getBusinessSettings(
     businessId: number
@@ -850,13 +876,9 @@ class Storage {
   }
 
   async createEmailLog(data: InsertEmailLog): Promise<any> {
-    return this.withDb(async (dbc) => {
-      const [row] = await dbc
-        .insert(emailAutomationLog)
-        .values(data)
-        .returning();
-      return row;
-    });
+    // Store in shared schema to avoid tenant-specific table requirements
+    const [row] = await db.insert(emailAutomationLog).values(data).returning();
+    return row;
   }
 
   async getEmailLogs(
@@ -864,24 +886,37 @@ class Storage {
     pickupRequestId?: number
   ): Promise<any[]> {
     const conditions = [] as any[];
+    const hasTenantContext =
+      !!this.tenantContext.tenant || !!this.tenantContext.businessId;
 
     if (customerId) {
       conditions.push(eq(emailAutomationLog.customerId, customerId));
     }
-
     if (pickupRequestId) {
       conditions.push(eq(emailAutomationLog.pickupRequestId, pickupRequestId));
     }
 
-    const rows = await this.withDb(async (dbc) => {
-      const base = dbc.select().from(emailAutomationLog);
-      if (conditions.length > 0) {
-        return base
-          .where(and(...conditions))
-          .orderBy(desc(emailAutomationLog.sentAt));
-      }
-      return base.orderBy(desc(emailAutomationLog.sentAt));
-    });
+    // If tenant context exists and no explicit pickup filter, scope to tenant's pickup IDs
+    if (hasTenantContext && !pickupRequestId) {
+      const ids = await this.withDb(async (dbc) =>
+        dbc.select({ id: pickupRequests.id }).from(pickupRequests)
+      );
+      const tenantPickupIds = ids
+        .map((r) => r.id)
+        .filter((id): id is number => typeof id === "number");
+      if (tenantPickupIds.length === 0) return [];
+      conditions.push(
+        inArray(emailAutomationLog.pickupRequestId, tenantPickupIds)
+      );
+    }
+
+    const base = db.select().from(emailAutomationLog);
+    const rows =
+      conditions.length > 0
+        ? await base
+            .where(and(...conditions))
+            .orderBy(desc(emailAutomationLog.sentAt))
+        : await base.orderBy(desc(emailAutomationLog.sentAt));
     return rows as any[];
   }
 }

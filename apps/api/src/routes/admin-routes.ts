@@ -616,6 +616,98 @@ export function registerAdminRoutes(app: Express) {
     }
   );
 
+  // Business info for the current tenant (business admin scope)
+  app.get(
+    "/api/admin/business-info",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("business:read"),
+    async (req, res) => {
+      try {
+        const businessId = (req as any).businessId as number | undefined;
+        if (!businessId) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Business ID is required" });
+        }
+        const storage = getStorage(req);
+        const business = await storage.getBusiness(businessId);
+        if (!business) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Business not found" });
+        }
+        return res.json({ success: true, business });
+      } catch (error) {
+        log("error", "Failed to fetch business info", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to fetch business info" });
+      }
+    }
+  );
+
+  app.put(
+    "/api/admin/business-info",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("business:write"),
+    async (req, res) => {
+      try {
+        const businessId = (req as any).businessId as number | undefined;
+        if (!businessId) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Business ID is required" });
+        }
+
+        const updateSchema = z
+          .object({
+            businessName: z.string().min(2).optional(),
+            phone: z.string().optional(),
+            address: z.string().optional(),
+            customDomain: z
+              .string()
+              .regex(/^[^.]+\.[^.]+(\.[^.]+)*$/)
+              .optional(),
+          })
+          .refine((v) => Object.keys(v).length > 0, {
+            message: "At least one field is required",
+          });
+        const updates = updateSchema.parse(req.body);
+
+        const storage = getStorage(req);
+        const updated = await storage.updateBusinessInfo(businessId, updates);
+        if (!updated) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Business not found" });
+        }
+        return res.json({
+          success: true,
+          business: updated,
+          message: "Business information updated successfully",
+        });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid business info",
+            errors: error.errors,
+          });
+        }
+        log("error", "Failed to update business info", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to update business info" });
+      }
+    }
+  );
+
   app.post(
     "/api/admin/businesses",
     authenticateToken,

@@ -27,14 +27,6 @@ export async function sendEmail(params: {
     const fromName =
       params.fromName || process.env.MAILTRAP_FROM_NAME || "RIVR";
 
-    log("Sending email", {
-      fromEmail,
-      fromName,
-      to: params.to,
-      subject: params.subject,
-      html: params.html,
-    });
-
     await mailtrapClient.send({
       from: { email: fromEmail, name: fromName },
       to: [{ email: params.to }],
@@ -43,6 +35,9 @@ export async function sendEmail(params: {
     });
     return { success: true };
   } catch (error) {
+    log("error", "Error sending email", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
