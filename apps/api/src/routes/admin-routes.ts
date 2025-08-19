@@ -14,6 +14,7 @@ import { authenticateToken } from "../auth";
 import { requirePermission, requireTenantMatch } from "../auth/rbac";
 import { db } from "../db";
 import { businesses, insertBusinessEmployeeSchema } from "@repo/schema";
+import { provisionTenantSchema } from "../lib/tenant-db";
 
 export function registerAdminRoutes(app: Express) {
   // Customer management routes (tenant-scoped)
@@ -717,6 +718,17 @@ export function registerAdminRoutes(app: Express) {
         const storage = getStorage(req);
         const businessData = insertBusinessSchema.parse(req.body);
         const business = await storage.createBusiness(businessData);
+
+        // Provision tenant schema immediately for the newly created business
+        try {
+          await provisionTenantSchema(business.databaseSchema);
+        } catch (e) {
+          log("warn", "Tenant schema provisioning failed after admin create", {
+            error: e instanceof Error ? e.message : String(e),
+            schema: (business as any).databaseSchema,
+            businessId: (business as any).id,
+          });
+        }
 
         res.json({
           success: true,
