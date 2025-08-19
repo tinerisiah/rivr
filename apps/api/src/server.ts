@@ -1,7 +1,6 @@
-import { json, urlencoded } from "body-parser";
 import express, { type Express } from "express";
 import morgan from "morgan";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { setupWebSocketServer } from "./routes/websocket-routes";
@@ -18,26 +17,54 @@ import { tenantMiddleware } from "./middleware/tenant";
 export const createServer = async (): Promise<Express> => {
   const app = express();
 
+  // Ensure Express correctly identifies client IPs behind a proxy (e.g., Render, Nginx)
+  // This also satisfies express-rate-limit's requirement when X-Forwarded-For is present
+  const trustProxyEnv = (process.env.TRUST_PROXY || "").trim().toLowerCase();
+  const trustProxySetting: boolean | number | string =
+    trustProxyEnv === "true" || trustProxyEnv === "1"
+      ? 1
+      : trustProxyEnv === "false" || trustProxyEnv === "0"
+        ? false
+        : /^\d+$/.test(trustProxyEnv)
+          ? parseInt(trustProxyEnv, 10)
+          : trustProxyEnv ||
+            (process.env.NODE_ENV === "production" ? 1 : false);
+  app.set("trust proxy", trustProxySetting);
+
   // Security middleware
   app.use(securityHeaders);
 
   // CORS: allow localhost dev ports and any subdomain under BASE_DOMAIN
   const baseDomain = (process.env.BASE_DOMAIN || "localhost").toLowerCase();
+  const frontendDomain = (
+    process.env.FRONTEND_DOMAIN || "localhost"
+  ).toLowerCase();
   const devOrigins = [
     "http://localhost:3000",
     "http://localhost:3001",
     "http://localhost:3002",
   ];
-  const corsOrigin = (origin: string | undefined, callback: Function) => {
+  // Optionally extend via env: comma-separated list
+  const envAllowed = (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const corsOrigin: CorsOptions["origin"] = (
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void
+  ) => {
     if (!origin) return callback(null, true);
     try {
       const url = new URL(origin);
       const host = url.host.toLowerCase();
       const allowed =
         devOrigins.includes(origin) ||
+        envAllowed.includes(origin) ||
         host === baseDomain ||
-        host.endsWith(`.${baseDomain}`);
-      return callback(null, allowed);
+        host.endsWith(`.${baseDomain}`) ||
+        host.endsWith(`.${frontendDomain}`) ||
+        host.includes(frontendDomain);
+      return callback(null, !!allowed);
     } catch {
       return callback(null, false);
     }
@@ -49,7 +76,7 @@ export const createServer = async (): Promise<Express> => {
     .use(morgan("dev"))
     .use(
       cors({
-        origin: corsOrigin as any,
+        origin: corsOrigin,
         credentials: true,
         methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
         allowedHeaders: [
@@ -57,6 +84,7 @@ export const createServer = async (): Promise<Express> => {
           "Authorization",
           "X-Requested-With",
           "X-Tenant-Subdomain",
+          "X-Customer-Token",
         ],
       })
     );
@@ -131,11 +159,13 @@ export const createServer = async (): Promise<Express> => {
   // Attach WebSocket server to the actual HTTP server after the caller calls listen
   // We monkey-patch app.listen to ensure WS attaches to the created server
   const originalListen = app.listen.bind(app);
-  (app as any).listen = (...args: any[]) => {
+  type ListenArgs = Parameters<Express["listen"]>;
+  type ListenReturn = ReturnType<Express["listen"]>;
+  (app as Express).listen = ((...args: ListenArgs): ListenReturn => {
     const server = originalListen(...args);
     setupWebSocketServer(server);
     return server;
-  };
+  }) as Express["listen"];
 
   return app;
 };

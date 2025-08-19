@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Camera, X, CheckCircle, Trash2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface QRScannerProps {
   onScan: (result: string) => void;
@@ -24,6 +25,7 @@ export default function QRScanner({
   const [isScanning, setIsScanning] = useState(false);
   const [scanner, setScanner] = useState<Html5QrcodeScanner | null>(null);
   const scannerRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     return () => {
@@ -120,10 +122,12 @@ export default function QRScanner({
             error.includes("NotAllowedError") ||
             error.includes("Permission denied")
           ) {
-            // Show permission error alert
-            alert(
-              "Camera permission is required for QR scanning. Please allow camera access and try again."
-            );
+            toast({
+              title: "Camera Permission Required",
+              description:
+                "Please allow camera access in your browser settings and try again.",
+              variant: "destructive",
+            });
             setIsScanning(false);
             setScanner(null);
           } else if (
@@ -138,10 +142,12 @@ export default function QRScanner({
 
       setScanner(html5QrcodeScanner);
     } catch (error) {
-      // Show initialization error alert
-      alert(
-        "Failed to initialize QR scanner. Please check camera permissions and try again."
-      );
+      toast({
+        title: "QR Scanner Error",
+        description:
+          "Failed to initialize QR scanner. Check camera permissions and try again.",
+        variant: "destructive",
+      });
       setIsScanning(false);
       setScanner(null);
     }

@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useToast } from "../../hooks/use-toast";
 import { useAuth } from "../../lib/auth";
+import { useTenant } from "../../lib/tenant-context";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import {
@@ -17,16 +18,20 @@ import {
 } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import Link from "next/link";
 
-const loginSchema = z.object({
+// Base schema for credentials. We conditionally extend it with `tenant`
+// for non-admin logins so the tenant value is preserved by the resolver.
+const baseLoginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-type LoginFormData = z.infer<typeof loginSchema>;
+type BaseLoginFormData = z.infer<typeof baseLoginSchema>;
+type LoginFormData = BaseLoginFormData & { tenant?: string };
 
 interface LoginFormProps {
-  type: "business" | "rivr_admin" | "driver";
+  type: "business" | "rivr_admin" | "driver" | "employee";
   onSuccess?: () => void;
   onSwitchToRegister?: () => void;
 }
@@ -40,6 +45,17 @@ export function LoginForm({
   const [error, setError] = useState<string | null>(null);
   const { login, isLoading } = useAuth();
   const { toast } = useToast();
+  const { subdomain: detectedSubdomain, isExec } = useTenant();
+
+  const hasSubdomain = Boolean(detectedSubdomain) && !isExec;
+
+  // Build schema based on login type. Business and driver require a tenant.
+  const shouldRequireTenant = type !== "rivr_admin" && !hasSubdomain;
+  const schema = shouldRequireTenant
+    ? baseLoginSchema.extend({
+        tenant: z.string().min(1, "Please enter your tenant (subdomain)"),
+      })
+    : baseLoginSchema;
 
   const {
     register,
@@ -47,13 +63,32 @@ export function LoginForm({
     formState: { errors },
     reset,
   } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(schema),
   });
 
   const onSubmit = async (data: LoginFormData) => {
     try {
       setError(null);
-      const result = await login(data, type);
+      const tenantInput = (data.tenant || detectedSubdomain || "")
+        .trim()
+        .toLowerCase();
+      if (tenantInput) {
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem("tenant_subdomain", tenantInput);
+            // Optional: also set a session cookie for consistency with other flows
+            document.cookie = `tenant_subdomain=${encodeURIComponent(
+              tenantInput
+            )}; path=/; samesite=lax`;
+          } catch {
+            // ignore storage errors
+          }
+        }
+      }
+      const result = await login(
+        { email: data.email, password: data.password },
+        type
+      );
 
       if (result.success) {
         toast({
@@ -65,23 +100,29 @@ export function LoginForm({
       } else {
         setError(result.message);
       }
-    } catch (err) {
+    } catch {
       setError("An unexpected error occurred. Please try again.");
     }
   };
+
+  const { subdomain } = useTenant();
 
   const title =
     type === "business"
       ? "Business Login"
       : type === "rivr_admin"
         ? "Admin Login"
-        : "Driver Login";
+        : type === "employee"
+          ? "Employee Login"
+          : "Driver Login";
   const description =
     type === "business"
       ? "Sign in to your business account"
       : type === "rivr_admin"
         ? "Sign in to RIVR admin portal"
-        : "Sign in to your driver account";
+        : type === "employee"
+          ? "Sign in to your employee account"
+          : "Sign in to your driver account";
 
   return (
     <Card className="w-full max-w-md mx-auto">
@@ -97,6 +138,27 @@ export function LoginForm({
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
+          )}
+
+          {shouldRequireTenant && (
+            <div className="space-y-2">
+              <Label htmlFor="tenant">Tenant</Label>
+              <Input
+                id="tenant"
+                type="text"
+                placeholder="your-tenant"
+                {...register("tenant")}
+                className={errors.tenant ? "border-red-500" : ""}
+              />
+              {errors.tenant && (
+                <p className="text-sm text-red-500">
+                  {errors.tenant.message as string}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Enter your business subdomain (tenant), e.g. "acme".
+              </p>
+            </div>
           )}
 
           <div className="space-y-2">
@@ -142,6 +204,15 @@ export function LoginForm({
             )}
           </div>
 
+          <div className="flex items-center justify-end -mt-2">
+            <Link
+              href="/auth/forgot"
+              className="text-sm text-muted-foreground hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? (
               <>
@@ -153,7 +224,7 @@ export function LoginForm({
             )}
           </Button>
 
-          {type === "business" && onSwitchToRegister && (
+          {!subdomain && type === "business" && onSwitchToRegister && (
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
                 Don't have an account?{" "}

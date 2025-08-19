@@ -8,6 +8,7 @@ import type { Driver } from "@/lib/schema";
 interface DriversTabProps {
   drivers: Driver[];
   loadingDrivers: boolean;
+  readOnly?: boolean;
   onAddDriver: () => void;
   onEditDriver: (driver: Driver) => void;
   onDeleteDriver: (driverId: number) => void;
@@ -17,6 +18,7 @@ interface DriversTabProps {
 export function DriversTab({
   drivers,
   loadingDrivers,
+  readOnly = false,
   onAddDriver,
   onEditDriver,
   onDeleteDriver,
@@ -33,13 +35,15 @@ export function DriversTab({
             Manage driver profiles and access credentials
           </p>
         </div>
-        <Button
-          onClick={onAddDriver}
-          className="bg-blue-500 hover:bg-blue-600 text-white"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Driver
-        </Button>
+        {!readOnly && (
+          <Button
+            onClick={onAddDriver}
+            className="bg-blue-500 hover:bg-blue-600 text-white"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Driver
+          </Button>
+        )}
       </div>
 
       <Card className="bg-card border border-border shadow-sm">
@@ -86,7 +90,7 @@ export function DriversTab({
                   {drivers.map((driver: Driver) => (
                     <tr key={driver.id} className="border-b border-border">
                       <td className="py-4 px-4">
-                        <Badge className="bg-blue-100 text-blue-800 font-mono">
+                        <Badge className="bg-primary/10 text-primary font-mono whitespace-nowrap">
                           ID: {driver.id}
                         </Badge>
                       </td>
@@ -123,39 +127,28 @@ export function DriversTab({
                         </Badge>
                       </td>
                       <td className="py-4 px-4">
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={() =>
-                              onCopyLink(
-                                `${window.location.origin}/driver?id=${driver.id}`
-                              )
-                            }
-                            variant="outline"
-                            size="sm"
-                            className="border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white text-xs"
-                          >
-                            <Copy className="w-3 h-3 mr-1" />
-                            Copy Link
-                          </Button>
-                          <Button
-                            onClick={() => onEditDriver(driver)}
-                            variant="outline"
-                            size="sm"
-                            className="border-gray-500 text-gray-500 hover:bg-gray-500 hover:text-white text-xs"
-                          >
-                            <Edit className="w-3 h-3 mr-1" />
-                            Edit
-                          </Button>
-                          <Button
-                            onClick={() => onDeleteDriver(driver.id)}
-                            variant="outline"
-                            size="sm"
-                            className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white text-xs"
-                          >
-                            <User className="w-3 h-3 mr-1" />
-                            Delete
-                          </Button>
-                        </div>
+                        {!readOnly && (
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={() => onEditDriver(driver)}
+                              variant="outline"
+                              size="sm"
+                              className="border-gray-500 text-gray-500 hover:bg-gray-500 hover:text-white text-xs"
+                            >
+                              <Edit className="w-3 h-3 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              onClick={() => onDeleteDriver(driver.id)}
+                              variant="outline"
+                              size="sm"
+                              className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white text-xs"
+                            >
+                              <User className="w-3 h-3 mr-1" />
+                              Delete
+                            </Button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -164,7 +157,7 @@ export function DriversTab({
             </div>
           )}
 
-          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="mt-6 p-4 bg-card border border-border rounded-lg">
             <h5 className="font-medium text-blue-800 mb-2">
               Driver Dashboard Access Instructions:
             </h5>

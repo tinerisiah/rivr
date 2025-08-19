@@ -134,31 +134,31 @@ export default function WelcomeAnimation({
     switch (color) {
       case "blue":
         return {
-          bg: "bg-blue-500",
-          text: "text-blue-600",
-          border: "border-blue-200",
-          glow: "shadow-blue-500/20",
+          bg: "bg-blue-500 dark:bg-blue-600",
+          text: "text-blue-600 dark:text-blue-400",
+          border: "border-blue-200 dark:border-blue-800",
+          glow: "shadow-blue-500/20 dark:shadow-blue-400/30",
         };
       case "green":
         return {
-          bg: "bg-green-500",
-          text: "text-green-600",
-          border: "border-green-200",
-          glow: "shadow-green-500/20",
+          bg: "bg-green-500 dark:bg-green-600",
+          text: "text-green-600 dark:text-green-400",
+          border: "border-green-200 dark:border-green-800",
+          glow: "shadow-green-500/20 dark:shadow-green-400/30",
         };
       case "purple":
         return {
-          bg: "bg-purple-500",
-          text: "text-purple-600",
-          border: "border-purple-200",
-          glow: "shadow-purple-500/20",
+          bg: "bg-purple-500 dark:bg-purple-600",
+          text: "text-purple-600 dark:text-purple-400",
+          border: "border-purple-200 dark:border-purple-800",
+          glow: "shadow-purple-500/20 dark:shadow-purple-400/30",
         };
       default:
         return {
-          bg: "bg-blue-500",
-          text: "text-blue-600",
-          border: "border-blue-200",
-          glow: "shadow-blue-500/20",
+          bg: "bg-blue-500 dark:bg-blue-600",
+          text: "text-blue-600 dark:text-blue-400",
+          border: "border-blue-200 dark:border-blue-800",
+          glow: "shadow-blue-500/20 dark:shadow-blue-400/30",
         };
     }
   };
@@ -173,9 +173,9 @@ export default function WelcomeAnimation({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm"
       >
-        <Card className="w-full max-w-md mx-4 bg-white/95 backdrop-blur border shadow-2xl">
+        <Card className="w-full max-w-md mx-4 bg-background/95 backdrop-blur border shadow-2xl">
           <div className="p-8 text-center">
             {/* Icon Animation */}
             <motion.div
@@ -203,7 +203,7 @@ export default function WelcomeAnimation({
                 y: currentStep >= 1 ? 0 : 20,
               }}
               transition={{ delay: 0.2, duration: 0.5 }}
-              className="text-2xl font-bold text-gray-800 mb-2"
+              className="text-2xl font-bold text-foreground mb-2"
             >
               {welcomeData.title}
             </motion.h2>
@@ -244,11 +244,11 @@ export default function WelcomeAnimation({
                       delay: 0.8 + index * 0.1,
                       duration: 0.4,
                     }}
-                    className={`flex items-center justify-between p-3 rounded-lg bg-gray-50 ${colors.border} border`}
+                    className={`flex items-center justify-between p-3 rounded-lg bg-muted ${colors.border} border`}
                   >
                     <div className="flex items-center gap-2">
                       <stat.icon className={`w-4 h-4 ${colors.text}`} />
-                      <span className="text-sm text-gray-600">
+                      <span className="text-sm text-muted-foreground">
                         {stat.label}
                       </span>
                     </div>
@@ -281,7 +281,7 @@ export default function WelcomeAnimation({
                 <motion.div
                   key={step}
                   className={`w-2 h-2 rounded-full transition-colors duration-300 ${
-                    currentStep >= step ? colors.bg : "bg-gray-300"
+                    currentStep >= step ? colors.bg : "bg-muted-foreground/30"
                   }`}
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -299,7 +299,7 @@ export default function WelcomeAnimation({
                 setIsVisible(false);
                 onComplete?.();
               }}
-              className="mt-4 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              className="mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               Skip
             </motion.button>

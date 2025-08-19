@@ -18,8 +18,9 @@ export interface User {
   lastName?: string;
   businessName?: string;
   subdomain?: string;
-  role: "business_owner" | "rivr_admin" | "driver";
+  role: "business_owner" | "rivr_admin" | "driver" | "employee_viewer";
   tenantId?: number;
+  name?: string;
 }
 
 export interface AuthResponse {
@@ -52,7 +53,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (
     credentials: LoginCredentials,
-    type: "business" | "rivr_admin" | "driver"
+    type: "business" | "rivr_admin" | "driver" | "employee"
   ) => Promise<AuthResponse>;
   registerBusiness: (data: RegisterBusinessData) => Promise<AuthResponse>;
   logout: () => Promise<void>;
@@ -128,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       type,
     }: {
       credentials: LoginCredentials;
-      type: "business" | "rivr_admin" | "driver";
+      type: "business" | "rivr_admin" | "driver" | "employee";
     }) => {
       let endpoint;
       switch (type) {
@@ -140,6 +141,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           break;
         case "driver":
           endpoint = "/api/auth/driver/login";
+          break;
+        case "employee":
+          endpoint = "/api/auth/employee/login";
           break;
         default:
           throw new Error("Invalid login type");
@@ -202,7 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (
     credentials: LoginCredentials,
-    type: "business" | "rivr_admin" | "driver"
+    type: "business" | "rivr_admin" | "driver" | "employee"
   ): Promise<AuthResponse> => {
     try {
       const result = await loginMutation.mutateAsync({ credentials, type });

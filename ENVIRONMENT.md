@@ -40,11 +40,15 @@ RATE_LIMIT_MAX_REQUESTS=100
 LOG_LEVEL=info
 ENFORCE_TENANT=false
 
-# Email (optional until automation is wired)
-SMTP_HOST=
-SMTP_PORT=587
-SMTP_USER=
-SMTP_PASS=
+# CORS
+# Comma-separated list of allowed origins (exact matches). Example:
+# ALLOWED_ORIGINS=https://rivr-front-dev.onrender.com,https://rivr-front-prod.onrender.com
+ALLOWED_ORIGINS=
+
+# Email (use Mailtrap; leave unset for no-op in dev)
+MAILTRAP_TOKEN=
+MAILTRAP_FROM_EMAIL=no-reply@rivr.app
+MAILTRAP_FROM_NAME=RIVR
 
 # Stripe (enable when billing is implemented)
 STRIPE_SECRET_KEY=

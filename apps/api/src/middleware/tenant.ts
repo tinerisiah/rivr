@@ -3,6 +3,8 @@ import { db } from "../db";
 import { businesses } from "@repo/schema";
 import { eq, or } from "drizzle-orm";
 import { log } from "@repo/logger";
+import { provisionTenantSchema } from "../lib/tenant-db";
+import { verifyToken } from "../auth";
 
 function getHostWithoutPort(hostHeader: string | undefined): string | null {
   if (!hostHeader) return null;
@@ -35,15 +37,44 @@ export async function tenantMiddleware(
     const publicPaths = new Set<string>([
       "/api/auth/health",
       "/api/auth/admin/login", // Allow admin login without tenant resolution
+      "/api/auth/profile",
+      // Password reset flows (public)
+      "/api/auth/forgot-password",
+      "/api/auth/reset-password",
+      "/api/public/businesses", // Allow public businesses listing without tenant resolution
     ]);
     if (publicPaths.has(req.path)) {
       return next();
     }
 
+    if (req.path.startsWith("/api/public/business-settings")) {
+      return next();
+    }
+
+    // Admin endpoints: if caller is a verified RIVR admin, bypass tenant resolution
+    if (
+      req.path.startsWith("/api/admin") ||
+      req.path.startsWith("/api/analytics/platform")
+    ) {
+      const authHeader = req.headers.authorization;
+      const token = authHeader && authHeader.split(" ")[1];
+      if (token) {
+        const payload = verifyToken(token);
+        if (payload?.role === "rivr_admin") {
+          // Treat admin requests as exec-scope without binding to a tenant
+          (req as any).tenant = "rivr_exec";
+          (req as any).businessId = undefined;
+          return next();
+        }
+      }
+    }
+
     const baseDomain = process.env.BASE_DOMAIN?.toLowerCase();
     const execSubdomain = (process.env.EXEC_SUBDOMAIN || "exec").toLowerCase();
 
-    const host = getHostWithoutPort(req.headers.host);
+    const forwardedHost = req.headers["x-forwarded-host"] as string | undefined;
+    const hostHeader = forwardedHost || req.headers.host;
+    const host = getHostWithoutPort(hostHeader);
     if (!host) {
       return res
         .status(400)
@@ -103,6 +134,16 @@ export async function tenantMiddleware(
       return res
         .status(404)
         .json({ success: false, message: "Unknown tenant" });
+    }
+
+    // Ensure tenant schema/tables exist and are up-to-date (idempotent)
+    try {
+      await provisionTenantSchema(business.databaseSchema);
+    } catch (e) {
+      log("warn", "Tenant schema ensure failed", {
+        error: e instanceof Error ? e.message : String(e),
+        schema: business.databaseSchema,
+      });
     }
 
     (req as any).tenant = business.databaseSchema;

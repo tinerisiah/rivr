@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 // Removed unused framer-motion imports
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle, AlertTriangle, MapPin } from "lucide-react";
 import {
   Dialog,
@@ -23,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { useTenant } from "@/lib/tenant-context";
 
 interface UserInfo {
   firstName: string;
@@ -69,6 +70,14 @@ export default function UserFormModal({
       address: "",
     },
   });
+
+  const { subdomain } = useTenant();
+
+  useEffect(() => {
+    if (isOpen && subdomain) {
+      form.setValue("businessName", subdomain);
+    }
+  }, [form, isOpen, subdomain]);
 
   const validateAddress = async (address: string) => {
     if (!address || address.length < 8) {
@@ -227,21 +236,21 @@ export default function UserFormModal({
                 </FormItem>
               )}
             />
-
-            {/* Business Name */}
-            <FormField
-              control={form.control}
-              name="businessName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Business Name*</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Acme Auto Service" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {!subdomain && (
+              <FormField
+                control={form.control}
+                name="businessName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Business Name*</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Acme Auto Service" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             {/* Address */}
             <FormField

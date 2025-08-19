@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   XCircle,
 } from "lucide-react";
+import Link from "next/link";
 
 interface Business {
   id: number;
@@ -301,7 +302,12 @@ export function BusinessesTab({
                     <div className="flex items-center space-x-3 mb-3">
                       <Building2 className="w-5 h-5 text-blue-500" />
                       <h3 className="text-lg font-semibold text-foreground">
-                        {business.businessName}
+                        <Link
+                          href={`/rivr-exec/businesses/${business.id}`}
+                          className="hover:underline"
+                        >
+                          {business.businessName}
+                        </Link>
                       </h3>
                       {getStatusBadge(business.status)}
                       {getSubscriptionBadge(business.subscriptionStatus)}

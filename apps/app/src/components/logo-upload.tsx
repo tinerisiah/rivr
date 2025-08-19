@@ -11,22 +11,28 @@ import {
 } from "@/components/ui/dialog";
 import { Upload, X, Check, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { updateBusinessSettings } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface LogoUploadProps {
   onLogoChange: (logoUrl: string | null) => void;
   currentLogo?: string | null;
+  readOnly?: boolean;
 }
 
 export default function LogoUpload({
   onLogoChange,
   currentLogo,
+  readOnly = false,
 }: LogoUploadProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(
     currentLogo || null
   );
   const [isDragging, setIsDragging] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const handleFileSelect = (file: File) => {
     if (file && file.type.startsWith("image/")) {
@@ -65,19 +71,63 @@ export default function LogoUpload({
     setIsDragging(false);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (previewUrl) {
-      localStorage.setItem("customLogo", previewUrl);
-      onLogoChange(previewUrl);
+      setIsSaving(true);
+      try {
+        await updateBusinessSettings({ customLogo: previewUrl });
+
+        // Also save to localStorage as fallback
+        localStorage.setItem("customLogo", previewUrl);
+
+        onLogoChange(previewUrl);
+        setIsOpen(false);
+
+        toast({
+          title: "Logo Updated",
+          description: "Your business logo has been updated successfully.",
+          variant: "default",
+        });
+      } catch (error) {
+        console.error("Failed to update logo:", error);
+        toast({
+          title: "Update Failed",
+          description: "Failed to update logo. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSaving(false);
+      }
     }
-    setIsOpen(false);
   };
 
-  const handleRemove = () => {
-    setPreviewUrl(null);
-    localStorage.removeItem("customLogo");
-    onLogoChange(null);
-    setIsOpen(false);
+  const handleRemove = async () => {
+    setIsSaving(true);
+    try {
+      await updateBusinessSettings({ customLogo: null });
+
+      // Also remove from localStorage
+      localStorage.removeItem("customLogo");
+
+      setPreviewUrl(null);
+      onLogoChange(null);
+      setIsOpen(false);
+
+      toast({
+        title: "Logo Removed",
+        description: "Your business logo has been removed.",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error("Failed to remove logo:", error);
+      toast({
+        title: "Removal Failed",
+        description: "Failed to remove logo. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleReset = () => {
@@ -87,14 +137,16 @@ export default function LogoUpload({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <Settings className="w-4 h-4 mr-2" />
-          Customize Logo
-        </Button>
+        {!readOnly && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Settings className="w-4 h-4 mr-2" />
+            Customize Logo
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -137,56 +189,77 @@ export default function LogoUpload({
                 <p className="text-sm text-muted-foreground mb-2">
                   Drag and drop your logo here, or
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Choose File
-                </Button>
+                {!readOnly && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Choose File
+                  </Button>
+                )}
                 <p className="text-xs text-muted-foreground mt-2">
                   Supports PNG, JPG, SVG up to 5MB
                 </p>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileInput}
-                className="hidden"
-              />
+              {!readOnly && (
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileInput}
+                  className="hidden"
+                />
+              )}
             </CardContent>
           </Card>
 
           {/* Action Buttons */}
           <div className="flex justify-between">
             <div className="flex gap-2">
-              {currentLogo && (
-                <Button variant="outline" size="sm" onClick={handleReset}>
+              {currentLogo && !readOnly && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReset}
+                  disabled={isSaving}
+                >
                   Reset
                 </Button>
               )}
-              {previewUrl && (
+              {previewUrl && !readOnly && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setPreviewUrl(null)}
+                  disabled={isSaving}
                 >
                   Clear
                 </Button>
               )}
             </div>
             <div className="flex gap-2">
-              {currentLogo && (
-                <Button variant="destructive" size="sm" onClick={handleRemove}>
+              {currentLogo && !readOnly && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleRemove}
+                  disabled={isSaving}
+                >
                   <X className="w-4 h-4 mr-2" />
-                  Remove Logo
+                  {isSaving ? "Removing..." : "Remove Logo"}
                 </Button>
               )}
-              <Button onClick={handleSave} disabled={!previewUrl} size="sm">
-                <Check className="w-4 h-4 mr-2" />
-                Save Logo
-              </Button>
+              {!readOnly && (
+                <Button
+                  onClick={handleSave}
+                  disabled={!previewUrl || isSaving}
+                  size="sm"
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  {isSaving ? "Saving..." : "Save Logo"}
+                </Button>
+              )}
             </div>
           </div>
         </div>

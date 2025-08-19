@@ -16,7 +16,6 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_WS_URL:
       process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:5001/ws",
   },
-  output: "standalone",
 };
 
 export default nextConfig;

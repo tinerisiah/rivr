@@ -99,6 +99,53 @@ export const businesses = pgTable(
   })
 );
 
+// Business settings table for tenant-specific configuration
+export const businessSettings = pgTable(
+  "business_settings",
+  {
+    id: serial("id").primaryKey(),
+    businessId: integer("business_id")
+      .notNull()
+      .references(() => businesses.id),
+    customLogo: text("custom_logo"), // URL or base64 data for the logo
+    customBranding: text("custom_branding"), // JSON string for additional branding
+    emailSettings: text("email_settings"), // JSON string for email preferences
+    notificationSettings: text("notification_settings"), // JSON string for notification preferences
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessIdIdx: uniqueIndex("business_settings_business_id_idx").on(
+      table.businessId
+    ),
+  })
+);
+
+// Business employees (platform-level users tied to a business)
+export const businessEmployees = pgTable(
+  "business_employees",
+  {
+    id: serial("id").primaryKey(),
+    businessId: integer("business_id")
+      .references(() => businesses.id)
+      .notNull(),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    password: text("password").notNull(), // hashed
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessEmailIdx: uniqueIndex("business_employees_business_email_idx").on(
+      table.businessId,
+      table.email
+    ),
+    emailIdx: index("business_employees_email_idx").on(table.email),
+    businessIdx: index("business_employees_business_idx").on(table.businessId),
+  })
+);
+
 // RIVR platform admin users (your executive portal users)
 export const rivrAdmins = pgTable(
   "rivr_admins",
@@ -165,6 +212,8 @@ export const customers = pgTable(
     phone: text("phone"),
     businessName: text("business_name").notNull(),
     address: text("address").notNull(),
+    // Optional password enables registered customer logins; when null, treated as guest
+    password: text("password"),
     accessToken: text("access_token").notNull().unique(),
     emailUpdatesEnabled: boolean("email_updates_enabled")
       .default(false)
@@ -211,6 +260,12 @@ export const pickupRequests = pgTable(
     employeeName: text("employee_name"),
     roNumber: text("ro_number"),
     customerNotes: text("customer_notes"),
+    // Additional production timeline fields
+    inProcessAt: timestamp("in_process_at"),
+    readyForDeliveryAt: timestamp("ready_for_delivery_at"),
+    readyToBillAt: timestamp("ready_to_bill_at"),
+    // Delivery completion photo
+    deliveryPhoto: text("delivery_photo"),
     wheelQrCodes: text("wheel_qr_codes").array().default([]),
     isDelivered: boolean("is_delivered").default(false).notNull(),
     deliveredAt: timestamp("delivered_at"),
@@ -418,6 +473,32 @@ export const refreshTokens = pgTable(
   })
 );
 
+// Password reset requests (platform-level, supports tenant-scoped users)
+export const passwordResetRequests = pgTable(
+  "password_reset_requests",
+  {
+    id: serial("id").primaryKey(),
+    email: text("email").notNull(),
+    // Role of the account to reset: business_owner, rivr_admin, driver, employee_viewer
+    role: text("role").notNull(),
+    // Optional scoping for tenant users (drivers/employees)
+    tenantId: integer("tenant_id"),
+    // Optional platform/tenant user id for faster lookups
+    userId: integer("user_id"),
+    token: text("token").notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    used: boolean("used").default(false).notNull(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex("password_resets_token_idx").on(table.token),
+    emailIdx: index("password_resets_email_idx").on(table.email),
+    roleIdx: index("password_resets_role_idx").on(table.role),
+    tenantIdx: index("password_resets_tenant_idx").on(table.tenantId),
+  })
+);
+
 // Schema definitions
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
@@ -524,6 +605,22 @@ export const insertEmailLogSchema = createInsertSchema(emailAutomationLog).omit(
   }
 );
 
+export const insertBusinessSettingsSchema = createInsertSchema(
+  businessSettings
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBusinessEmployeeSchema = createInsertSchema(
+  businessEmployees
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Type exports
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -545,6 +642,14 @@ export type InsertRouteStop = z.infer<typeof insertRouteStopSchema>;
 export type RouteStop = typeof routeStops.$inferSelect;
 export type Business = typeof businesses.$inferSelect;
 export type InsertBusiness = z.infer<typeof insertBusinessSchema>;
+export type BusinessSettings = typeof businessSettings.$inferSelect;
+export type InsertBusinessSettings = z.infer<
+  typeof insertBusinessSettingsSchema
+>;
+export type BusinessEmployee = typeof businessEmployees.$inferSelect;
+export type InsertBusinessEmployee = z.infer<
+  typeof insertBusinessEmployeeSchema
+>;
 export type RivrAdmin = typeof rivrAdmins.$inferSelect;
 export type InsertRivrAdmin = z.infer<typeof insertRivrAdminSchema>;
 export type BusinessAnalytics = typeof businessAnalytics.$inferSelect;
@@ -556,3 +661,4 @@ export type InsertEmailTemplate = z.infer<typeof insertEmailTemplateSchema>;
 export type EmailAutomationLog = typeof emailAutomationLog.$inferSelect;
 export type InsertEmailLog = z.infer<typeof insertEmailLogSchema>;
 export type RefreshToken = typeof refreshTokens.$inferSelect;
+export type PasswordResetRequest = typeof passwordResetRequests.$inferSelect;

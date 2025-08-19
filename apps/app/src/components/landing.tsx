@@ -5,11 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Clock, Cog, Package } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Header } from "@/components/ui/header";
 import QuoteRequestModal from "./quote-request-modal";
-import UserFormModal from "./user-form-modal";
 import PickupWheel from "./pickup-wheel";
+import ServiceRequestModal from "./service-request-modal";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useBusinessSettings } from "@/hooks/use-business-settings";
+import { useTenant } from "@/lib/tenant-context";
+import type { CombinedServiceRequestData } from "./service-request-modal";
 
 interface QuoteInfo {
   firstName: string;
@@ -49,6 +54,7 @@ interface PickupRequest {
   completionNotes: string | null;
   employeeName: string | null;
   roNumber: string | null;
+  customerNotes: string | null;
   wheelQrCodes: string[];
   isDelivered: boolean;
   deliveredAt: string | null;
@@ -75,70 +81,198 @@ interface PickupRequest {
 
 export function Landing() {
   const router = useRouter();
+  const { toast } = useToast();
+  const { businessInfo, isLoading: isLoadingSettings } = useBusinessSettings();
   const [userData, setUserData] = useState<UserInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showQuoteForm, setShowQuoteForm] = useState(false);
-  const [showUserForm, setShowUserForm] = useState(false);
-  const [myRequests, setMyRequests] = useState<PickupRequest[]>([]);
+  // Single combined modal now handles user info + service details
+  const [showServiceDetails, setShowServiceDetails] = useState(false);
+  // Deprecated local list; using `requests` instead
+  const [requests, setRequests] = useState<PickupRequest[]>([]);
+  const [editingRequest, setEditingRequest] = useState<PickupRequest | null>(
+    null
+  );
+  const { subdomain } = useTenant();
 
-  // Load saved user data
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedData = localStorage.getItem("serviceRequestUserData");
-      if (savedData) {
-        try {
-          setUserData(JSON.parse(savedData));
-        } catch (error) {
-          console.error("Error parsing saved user data:", error);
-        }
-      }
-    }
-  }, []);
-
-  const handleServiceClick = async () => {
-    if (!userData) {
-      // Show user form modal
-      setShowUserForm(true);
-      return;
-    }
-
+  const submitServiceRequest = async (details: CombinedServiceRequestData) => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      alert("Service request submitted successfully!");
-    } catch (error) {
-      alert("Failed to submit service request. Please try again.");
+      const payload = {
+        firstName: details.firstName,
+        lastName: details.lastName,
+        email: details.email,
+        phone: details.phone,
+        businessName: details.businessName,
+        address: details.address,
+        roNumber: details?.roNumber ?? undefined,
+        customerNotes: details?.notes ?? undefined,
+      };
+
+      // If the user selected a business, ensure tenant header will be present
+      if (details?.businessSubdomain) {
+        try {
+          localStorage.setItem("tenant_subdomain", details.businessSubdomain);
+        } catch {
+          // no-op
+        }
+      }
+
+      const res = await apiRequest("POST", "/api/pickup-request", payload);
+      const json = (await res.json()) as {
+        success: boolean;
+        requestId?: number;
+        customerToken?: string;
+        message?: string;
+      };
+
+      // In case the httpOnly cookie is blocked in current env, set a readable cookie for fallback
+      if (json?.customerToken && typeof document !== "undefined") {
+        const maxAgeDays = 180;
+        document.cookie = `customer_token=${encodeURIComponent(json.customerToken)}; Max-Age=${maxAgeDays * 24 * 60 * 60}; Path=/; SameSite=Lax`;
+      }
+
+      // Set in-memory user info for footer display (no localStorage)
+      const nextUser: UserInfo = {
+        firstName: details.firstName,
+        lastName: details.lastName,
+        email: details.email,
+        phone: details.phone,
+        businessName: details.businessName,
+        address: details.address,
+        roNumber: details.roNumber,
+        customerNotes: details.notes,
+      };
+      setUserData(nextUser);
+      try {
+        window.localStorage.setItem(
+          "customer_form_data",
+          JSON.stringify(nextUser)
+        );
+      } catch {}
+
+      toast({
+        title: "Request Submitted",
+        description: json?.message || "Service request submitted successfully.",
+      });
+      setShowServiceDetails(false);
+      setEditingRequest(null);
+      // Refresh list
+      try {
+        const r = await apiRequest("GET", "/api/customer/requests");
+        const data = (await r.json()) as {
+          success: boolean;
+          requests: PickupRequest[];
+        };
+        if (data?.success) setRequests(data.requests);
+      } catch {
+        // ignore refresh error
+      }
+    } catch {
+      toast({
+        title: "Request Failed",
+        description: "Failed to submit service request. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleServiceClick = () => {
+    // Always start a fresh request when using the main CTA
+    setEditingRequest(null);
+    setShowServiceDetails(true);
+  };
+  // Load existing requests if a session exists
+  React.useEffect(() => {
+    (async () => {
+      try {
+        // Prefill from local storage first if present
+        if (typeof window !== "undefined" && !userData) {
+          try {
+            const stored = window.localStorage.getItem("customer_form_data");
+            if (stored) {
+              const parsed = JSON.parse(stored) as UserInfo;
+              setUserData(parsed);
+            }
+          } catch {}
+        }
+        // Prefill from server session if available
+        const profileRes = await apiRequest("GET", "/api/customer/profile");
+        const profileJson = (await profileRes.json()) as
+          | { success: true; customer: UserInfo }
+          | { success: false };
+        if ((profileJson as any)?.success && (profileJson as any).customer) {
+          const c = (profileJson as any).customer as UserInfo;
+          setUserData(c);
+          try {
+            window.localStorage.setItem(
+              "customer_form_data",
+              JSON.stringify(c)
+            );
+          } catch {}
+        }
+        const res = await apiRequest("GET", "/api/customer/requests");
+        const json = (await res.json()) as {
+          success: boolean;
+          requests: PickupRequest[];
+        };
+        if (json?.success) setRequests(json.requests);
+      } catch {
+        // not logged as customer; ignore
+      }
+    })();
+  }, []);
+
+  const startEditRequest = (req: PickupRequest) => {
+    setEditingRequest(req);
+    setShowServiceDetails(true);
   };
 
   const handleQuoteRequest = () => {
     setShowQuoteForm(true);
   };
 
-  const handleQuoteSubmit = (data: QuoteInfo) => {
-    console.log("Quote request submitted:", data);
-    // Here you would typically send the data to your API
-    alert("Quote request submitted successfully! We'll get back to you soon.");
-    setShowQuoteForm(false);
+  const handleQuoteSubmit = async (data: QuoteInfo) => {
+    try {
+      const res = await apiRequest("POST", "/api/quote-request", data);
+      const json = (await res.json()) as { success: boolean; message?: string };
+      toast({
+        title: "Quote Request Sent",
+        description:
+          json?.message ||
+          "Quote request submitted successfully. We'll get back to you soon.",
+      });
+      // Persist partial info for future prefill
+      const nextUser: UserInfo = {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        phone: data.phone,
+        businessName: data.businessName,
+        address: userData?.address || "",
+        roNumber: userData?.roNumber,
+        customerNotes: userData?.customerNotes,
+      };
+      setUserData(nextUser);
+      try {
+        window.localStorage.setItem(
+          "customer_form_data",
+          JSON.stringify(nextUser)
+        );
+      } catch {}
+      setShowQuoteForm(false);
+    } catch {
+      toast({
+        title: "Quote Request Failed",
+        description: "Failed to submit quote request. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleFormSubmit = (data: UserInfo) => {
-    console.log("User form submitted:", data);
-    // Save user data to localStorage
-    localStorage.setItem("serviceRequestUserData", JSON.stringify(data));
-    setUserData(data);
-    setShowUserForm(false);
-
-    // Automatically proceed with service request
-    setIsLoading(true);
-    setTimeout(() => {
-      alert("Service request submitted successfully!");
-      setIsLoading(false);
-    }, 2000);
-  };
+  // Removed separate user form; combined in ServiceRequestModal
 
   return (
     <div className="min-h-screen bg-background overscroll-none safe-area-top safe-area-bottom">
@@ -146,33 +280,54 @@ export function Landing() {
         {/* Header with Portal Access */}
         <Header />
 
+        {/* Hero Section with Custom Logo for Tenants */}
+        {isLoadingSettings ? (
+          <div className="text-center mb-8 py-8">
+            <div className="max-w-2xl mx-auto">
+              <div className="mb-6">
+                <div className="w-24 h-24 mx-auto bg-muted rounded-lg animate-pulse flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              </div>
+              <h1 className="text-3xl font-bold text-foreground mb-4">
+                Loading...
+              </h1>
+              <p className="text-lg text-muted-foreground">
+                Please wait while we load your business settings.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         {/* Main Service Request Section */}
         <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold text-foreground mb-3">
-            Request Service
-          </h2>
-          <p className="text-muted-foreground mb-4">
-            Click the button to request service or get a quote
-          </p>
+          <>
+            <h2 className="text-2xl font-bold text-foreground mb-3">
+              Request Service
+            </h2>
+            <p className="text-muted-foreground mb-4">
+              Click the button to request service or get a quote
+            </p>
 
-          <div className="mb-5">
-            <PickupWheel onClick={handleServiceClick} isLoading={isLoading} />
-          </div>
-
-          {/* Action Button - Request Quote */}
-          <div className="flex justify-center mb-6">
-            <Button
-              onClick={handleQuoteRequest}
-              variant="outline"
-              className="border-primary/30 text-primary hover:bg-primary/10 hover:text-white px-8 py-3 min-w-[160px]"
-            >
-              Request Quote
-            </Button>
-          </div>
+            <div className="mb-5">
+              <PickupWheel onClick={handleServiceClick} isLoading={isLoading} />
+            </div>
+          </>
+          {!subdomain && (
+            <div className="flex justify-center mb-6">
+              <Button
+                onClick={handleQuoteRequest}
+                variant="outline"
+                className="border-primary/30 text-primary hover:bg-primary/10 hover:text-white px-8 py-3 min-w-[160px]"
+              >
+                Request Quote
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Customer Dashboard - Vertically Aligned Service Requests */}
-        {userData && myRequests.length > 0 && (
+        {requests.length > 0 && (
           <div className="mb-8">
             <Card className="bg-card border-border shadow-sm max-w-2xl mx-auto">
               <CardHeader className="pb-4">
@@ -189,8 +344,8 @@ export function Landing() {
                         <Clock className="w-8 h-8 text-red-500" />
                         <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                           {
-                            myRequests.filter(
-                              (r: PickupRequest) =>
+                            requests.filter(
+                              (r) =>
                                 !r.isCompleted &&
                                 (r.productionStatus === "pending" ||
                                   !r.productionStatus)
@@ -212,8 +367,8 @@ export function Landing() {
                       className="bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800"
                     >
                       {
-                        myRequests.filter(
-                          (r: PickupRequest) =>
+                        requests.filter(
+                          (r) =>
                             !r.isCompleted &&
                             (r.productionStatus === "pending" ||
                               !r.productionStatus)
@@ -230,9 +385,8 @@ export function Landing() {
                         <Cog className="w-8 h-8 text-yellow-500" />
                         <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                           {
-                            myRequests.filter(
-                              (r: PickupRequest) =>
-                                r.productionStatus === "in_process"
+                            requests.filter(
+                              (r) => r.productionStatus === "in_process"
                             ).length
                           }
                         </span>
@@ -248,9 +402,8 @@ export function Landing() {
                     </div>
                     <Badge className="bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800">
                       {
-                        myRequests.filter(
-                          (r: PickupRequest) =>
-                            r.productionStatus === "in_process"
+                        requests.filter(
+                          (r) => r.productionStatus === "in_process"
                         ).length
                       }{" "}
                       Active
@@ -264,9 +417,8 @@ export function Landing() {
                         <Package className="w-8 h-8 text-orange-500" />
                         <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                           {
-                            myRequests.filter(
-                              (r: PickupRequest) =>
-                                r.productionStatus === "ready_for_delivery"
+                            requests.filter(
+                              (r) => r.productionStatus === "ready_for_delivery"
                             ).length
                           }
                         </span>
@@ -282,13 +434,48 @@ export function Landing() {
                     </div>
                     <Badge className="bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800">
                       {
-                        myRequests.filter(
-                          (r: PickupRequest) =>
-                            r.productionStatus === "ready_for_delivery"
+                        requests.filter(
+                          (r) => r.productionStatus === "ready_for_delivery"
                         ).length
                       }{" "}
                       Ready
                     </Badge>
+                  </div>
+
+                  {/* Editable list */}
+                  <div className="space-y-3">
+                    {requests.map((r) => (
+                      <div
+                        key={r.id}
+                        className="flex items-start justify-between p-3 rounded-md border border-border"
+                      >
+                        <div className="text-left">
+                          <p className="font-medium text-foreground">
+                            {r.firstName} {r.lastName}
+                          </p>
+                          <span className="text-xs text-muted-foreground">
+                            {r.email}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {r.address}
+                          </span>
+                          <div className="text-xs text-muted-foreground">
+                            RO: {r.roNumber || "—"}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {!r.isCompleted && !r.isArchived && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => startEditRequest(r)}
+                            >
+                              Edit
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </CardContent>
@@ -385,57 +572,6 @@ export function Landing() {
 
       {/* Footer with Customer Info and Business Access */}
       <footer className="mt-12 pt-8 border-t border-border bg-card/30 rounded-t-lg">
-        {/* Customer Information Section */}
-        {userData && (
-          <div className="mb-6">
-            <Card className="bg-card border-border shadow-sm max-w-md mx-auto">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-card-foreground text-center text-lg">
-                  Your Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="text-center space-y-2">
-                  <div className="flex items-center justify-center">
-                    <Badge className="bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800">
-                      Ready for Service
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-card-foreground font-medium">
-                      {userData.firstName} {userData.lastName}
-                    </p>
-                    <p className="text-muted-foreground text-sm">
-                      {userData.businessName}
-                    </p>
-                    <p className="text-muted-foreground text-sm">
-                      {userData.address}
-                    </p>
-                    <p className="text-muted-foreground text-sm">
-                      {userData.email}
-                    </p>
-                    {userData.phone && (
-                      <p className="text-muted-foreground text-sm">
-                        {userData.phone}
-                      </p>
-                    )}
-                  </div>
-                  <div className="pt-2">
-                    <Button
-                      onClick={() => setShowUserForm(true)}
-                      variant="outline"
-                      size="sm"
-                      className="border-border text-foreground hover:bg-muted"
-                    >
-                      Update Information
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
         {/* Business Access Links */}
         <div className="text-center mb-6">
           <p className="text-muted-foreground text-sm mb-4">Business Access</p>
@@ -448,6 +584,7 @@ export function Landing() {
             >
               Business Portal
             </Button>
+
             <Button
               variant="ghost"
               size="sm"
@@ -462,7 +599,9 @@ export function Landing() {
         {/* Copyright */}
         <div className="text-center pb-4">
           <p className="text-muted-foreground text-sm">
-            © {new Date().getFullYear()} RIVR Logistics. All rights reserved.
+            © {new Date().getFullYear()}{" "}
+            {subdomain ? businessInfo?.name : "RIVR Logistics"}. All rights
+            reserved.
           </p>
         </div>
       </footer>
@@ -471,12 +610,84 @@ export function Landing() {
         isOpen={showQuoteForm}
         onClose={() => setShowQuoteForm(false)}
         onSubmit={handleQuoteSubmit}
+        initialData={
+          userData
+            ? {
+                firstName: userData.firstName,
+                lastName: userData.lastName,
+                email: userData.email,
+                phone: userData.phone,
+                businessName: userData.businessName,
+              }
+            : undefined
+        }
       />
 
-      <UserFormModal
-        isOpen={showUserForm}
-        onClose={() => setShowUserForm(false)}
-        onSubmit={handleFormSubmit}
+      <ServiceRequestModal
+        isOpen={showServiceDetails}
+        onClose={() => setShowServiceDetails(false)}
+        onSubmit={(details) =>
+          editingRequest
+            ? (async () => {
+                // If editing existing request, call edit API
+                try {
+                  await apiRequest(
+                    "PATCH",
+                    `/api/customer/requests/${editingRequest.id}`,
+                    {
+                      roNumber: details.roNumber,
+                      customerNotes: details.notes,
+                      address: details.address,
+                    }
+                  );
+                  toast({
+                    title: "Request Updated",
+                    description: "Your request was updated.",
+                  });
+                  setShowServiceDetails(false);
+                  setEditingRequest(null);
+                  const r = await apiRequest("GET", "/api/customer/requests");
+                  const data = (await r.json()) as {
+                    success: boolean;
+                    requests: PickupRequest[];
+                  };
+                  if (data?.success) setRequests(data.requests);
+                } catch {
+                  toast({
+                    title: "Update Failed",
+                    description: "Could not update request.",
+                    variant: "destructive",
+                  });
+                }
+              })()
+            : submitServiceRequest(details)
+        }
+        initialData={
+          editingRequest
+            ? {
+                firstName: editingRequest.firstName,
+                lastName: editingRequest.lastName,
+                email: editingRequest.email,
+                phone: editingRequest.phone || undefined,
+                businessName: editingRequest.businessName,
+                address: editingRequest.address,
+                roNumber: editingRequest.roNumber || undefined,
+                notes: editingRequest.deliveryNotes || undefined,
+              }
+            : userData
+              ? {
+                  firstName: userData.firstName,
+                  lastName: userData.lastName,
+                  email: userData.email,
+                  phone: userData.phone,
+                  businessName: userData.businessName,
+                  address: userData.address,
+                  roNumber: userData.roNumber,
+                  notes: userData.customerNotes,
+                }
+              : undefined
+        }
+        disableUserFields={!!editingRequest}
       />
     </div>
   );

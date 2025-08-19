@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export function middleware(request: NextRequest) {
-  const host = request.headers.get("host");
+  const host =
+    request.headers.get("x-forwarded-host") || request.headers.get("host");
   const baseDomain = process.env.NEXT_PUBLIC_BASE_DOMAIN;
   const execSubdomain = process.env.NEXT_PUBLIC_EXEC_SUBDOMAIN || "exec";
 
@@ -59,6 +60,16 @@ export function middleware(request: NextRequest) {
       return res;
     }
 
+    // Auth routes
+    if (path.startsWith("/auth") || path === "/auth") {
+      const res = NextResponse.next();
+      res.cookies.set("tenant_subdomain", subdomain, {
+        path: "/",
+        sameSite: "lax",
+      });
+      return res;
+    }
+
     // Driver routes
     if (path.startsWith("/driver") || path === "/driver") {
       const res = NextResponse.next();
@@ -72,16 +83,6 @@ export function middleware(request: NextRequest) {
     // Customer/pickup routes
     if (path.startsWith("/pickup") || path === "/pickup") {
       const res = NextResponse.next();
-      res.cookies.set("tenant_subdomain", subdomain, {
-        path: "/",
-        sameSite: "lax",
-      });
-      return res;
-    }
-
-    // Default business landing
-    if (path === "/") {
-      const res = NextResponse.redirect(new URL("/business", request.url));
       res.cookies.set("tenant_subdomain", subdomain, {
         path: "/",
         sameSite: "lax",

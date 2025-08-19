@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { authenticatedApiRequest, apiRequest } from "@/lib/api";
+import { authenticatedApiRequest } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -17,11 +17,10 @@ import {
   Clock,
   Copy,
   DollarSign,
-  FileText,
+  Loader2,
   Mail,
   MessageSquare,
   Package,
-  PieChart,
   Search,
   Settings,
   Target,
@@ -30,13 +29,18 @@ import {
   Users,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Header } from "./ui";
+import { ExecutiveRevenueReport } from "./rivr-exec/reports/ExecutiveRevenueReport";
+import { CustomersReport } from "./rivr-exec/reports/CustomersReport";
+import { DriverPerformanceReport } from "./rivr-exec/reports/DriverPerformanceReport";
 import { BusinessesTab } from "./admin/businesses-tab";
 import { BusinessForm } from "./admin/business-form";
 import AnalyticsDashboard from "./rivr-exec/analytics/AnalyticsDashboard";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { RefreshCcw } from "lucide-react";
 
 export function RivrExecPortal() {
   const router = useRouter();
@@ -114,17 +118,20 @@ export function RivrExecPortal() {
       businessId: number;
       status: string;
     }) => {
-      const response = await apiRequest(
+      const data = await authenticatedApiRequest(
         `/api/admin/businesses/${businessId}/status`,
         {
           method: "PUT",
           body: JSON.stringify({ status }),
         }
       );
-      return response.json();
+      return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/businesses"],
+        refetchType: "active",
+      });
       toast({
         title: "Business Status Updated",
         description: "Business status updated successfully",
@@ -142,14 +149,17 @@ export function RivrExecPortal() {
 
   const createBusinessMutation = useMutation({
     mutationFn: async (businessData: any) => {
-      const response = await apiRequest("/api/admin/businesses", {
+      const data = await authenticatedApiRequest("/api/admin/businesses", {
         method: "POST",
         body: JSON.stringify(businessData),
       });
-      return response.json();
+      return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/businesses"],
+        refetchType: "active",
+      });
       toast({
         title: "Business Created",
         description: "Business account created successfully",
@@ -213,6 +223,43 @@ export function RivrExecPortal() {
     }
   };
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefreshOverview = async () => {
+    setRefreshing(true);
+    try {
+      const keys = [
+        "/api/admin/customers",
+        "/api/admin/pickup-requests",
+        "/api/admin/quote-requests",
+        "/api/admin/routes",
+        "/api/admin/drivers",
+        "/api/admin/businesses",
+      ];
+      await Promise.all(
+        keys.map((key) =>
+          queryClient.invalidateQueries({
+            queryKey: [key],
+            refetchType: "active",
+          })
+        )
+      );
+      toast({
+        title: "Overview Refreshed",
+        description: "Latest data has been loaded",
+      });
+    } catch (error) {
+      console.error("Refresh failed:", error);
+      toast({
+        title: "Refresh Failed",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const copyToClipboard = async (token: string) => {
     const url = `${window.location.origin}/?token=${token}`;
     try {
@@ -220,6 +267,15 @@ export function RivrExecPortal() {
     } catch (error) {
       console.error("Copy failed:", error);
     }
+  };
+
+  const formatProductionStatus = (status?: string) => {
+    if (!status) return "pending";
+    const statusMap: Record<string, string> = {
+      ready_for_delivery: "ready for delivery",
+      in_process: "in process",
+    };
+    return statusMap[status] ?? status.replaceAll("_", " ");
   };
 
   // Business management functions
@@ -300,6 +356,23 @@ export function RivrExecPortal() {
           className="space-y-6 sm:space-y-8"
         >
           <Header withPortalMenu={false} minimal={true} />
+
+          {/* Actions Bar */}
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshOverview}
+              className="shadow-sm"
+            >
+              {refreshing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCcw className="w-4 h-4" />
+              )}
+              <span>Refresh</span>
+            </Button>
+          </div>
 
           {/* Main Content Tabs */}
           <Tabs defaultValue="overview" className="w-full">
@@ -656,20 +729,6 @@ export function RivrExecPortal() {
                                   </div>
                                 </div>
                               </div>
-
-                              <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-                                <Button
-                                  onClick={() =>
-                                    copyToClipboard(customer.accessToken)
-                                  }
-                                  variant="outline"
-                                  size="sm"
-                                  className="border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white text-xs"
-                                >
-                                  <Copy className="w-3 h-3 mr-1" />
-                                  Copy Link
-                                </Button>
-                              </div>
                             </div>
                           </div>
                         );
@@ -692,9 +751,7 @@ export function RivrExecPortal() {
 
             <TabsContent value="operations" className="space-y-6 mt-6">
               <Card className=" border border-border p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">
-                  Operations Overview
-                </h3>
+                <h3 className="text-lg font-bold mb-4">Operations Overview</h3>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div>
                     <h4 className="text-md font-semibold  mb-3">
@@ -734,7 +791,7 @@ export function RivrExecPortal() {
                             {request.firstName} {request.lastName}
                           </span>
                           <Badge className="bg-blue-100 text-blue-800">
-                            {request.productionStatus || "pending"}
+                            {formatProductionStatus(request.productionStatus)}
                           </Badge>
                         </div>
                       ))}
@@ -745,46 +802,28 @@ export function RivrExecPortal() {
             </TabsContent>
 
             <TabsContent value="reports" className="space-y-6 mt-6">
-              <Card className=" border border-border p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-foreground mb-4">
-                  Executive Reports
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Button
-                    variant="outline"
-                    className="p-4 h-auto flex flex-col items-center gap-2"
-                  >
-                    <FileText className="w-8 h-8 text-blue-500" />
-                    <span className="text-sm font-medium">Revenue Report</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="p-4 h-auto flex flex-col items-center gap-2"
-                  >
-                    <Users className="w-8 h-8 text-green-500" />
-                    <span className="text-sm font-medium">
-                      Customer Analysis
-                    </span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="p-4 h-auto flex flex-col items-center gap-2"
-                  >
-                    <Activity className="w-8 h-8 text-orange-500" />
-                    <span className="text-sm font-medium">
-                      Operations Report
-                    </span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="p-4 h-auto flex flex-col items-center gap-2"
-                  >
-                    <PieChart className="w-8 h-8 text-purple-500" />
-                    <span className="text-sm font-medium">
-                      Performance Metrics
-                    </span>
-                  </Button>
+              <Card className="border border-border p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-bold">Executive Reports</h3>
                 </div>
+                <Tabs className="w-full" defaultValue="revenue">
+                  <TabsList className="grid grid-cols-2 md:grid-cols-3 gap-2 bg-background border border-border">
+                    <TabsTrigger value="revenue">Revenue</TabsTrigger>
+                    <TabsTrigger value="customers">Customers</TabsTrigger>
+                    <TabsTrigger value="drivers">
+                      Driver Performance
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="revenue" className="mt-4">
+                    <ExecutiveRevenueReport />
+                  </TabsContent>
+                  <TabsContent value="customers" className="mt-4">
+                    <CustomersReport />
+                  </TabsContent>
+                  <TabsContent value="drivers" className="mt-4">
+                    <DriverPerformanceReport />
+                  </TabsContent>
+                </Tabs>
               </Card>
             </TabsContent>
           </Tabs>

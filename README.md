@@ -66,38 +66,54 @@ cd apps/api
 pnpm db:push
 ```
 
-## Seeding (for testing)
+## Seeding (demo data)
 
-There are two layers of seeding:
-
-- Platform auth + sample data (no tenants)
+Use these commands from `apps/api` to populate demo data, including tenants and tenant-scoped driver passwords.
 
 ```sh
 cd apps/api
-pnpm run setup-auth           # platform auth scaffolding
-pnpm run seed:auth            # seed platform auth data (admins)
+
+# Push the latest schema to the DB
+pnpm db:push
+
+# Full seed (admins, businesses, tenants with customers, drivers, pickup requests)
+pnpm seed
+
+# Auth-only seed (only platform admins + businesses/users, no tenant data)
+pnpm seed:auth
 ```
 
-- Full demo data including a tenant schema and initial tenant records
+After a successful full seed, you can log in with:
+
+- Admin: `admin@rivr.com` / `admin123`
+- Business Owners: `robert@smithauto.com` / `business123` (tenant `smith-auto`), `jane@doemotors.com` / `business123` (tenant `doe-motors`)
+- Drivers: `alex@rivr.com` / `driver123`, `maria@rivr.com` / `driver123`, `david@rivr.com` / `driver123` (use tenant `smith-auto` or `doe-motors`)
+
+### Reseeding safely
+
+If you need to reseed (e.g., to refresh driver passwords or tenant data):
 
 ```sh
 cd apps/api
-# Creates demo tenant schema and populates initial data for testing
-node scripts/seed-full-standalone.js
+pnpm db:push   # ensure schema is up-to-date
+pnpm seed      # re-run full seed
 ```
 
-- Tenant-focused utilities (TypeScript helpers)
+The full seed will:
+
+- Clear existing platform demo data (admins, drivers, businesses, users)
+- Ensure each tenant schema exists and has the required columns
+- Insert/update known test drivers with hashed passwords per tenant
+- Populate customers and pickup requests for each tenant
+
+### Render deployment note
+
+On Render, ensure the API service runs `db:push` and a full seed after deploy. For manual reseed on Render, run the same commands in a shell on the API service:
 
 ```sh
-cd apps/api
-pnpm run tenant:create        # ts-node scripts/create-tenant-schema.ts
-pnpm run tenant:seed          # ts-node scripts/migrate-initial-tenant-seed.ts
+pnpm --filter ./apps/api db:push
+pnpm --filter ./apps/api seed
 ```
-
-Notes:
-
-- In local development with `BASE_DOMAIN=localhost`, pass `X-Tenant-Subdomain: <subdomain>` to target a tenant. See ENVIRONMENT.md.
-- The full seed script sets up a demo tenant with data suitable for UI testing.
 
 ### Create a tenant and seed data
 

@@ -48,13 +48,14 @@ export const changePasswordSchema = z.object({
 export interface JWTPayload {
   userId: number;
   email: string;
-  role: "business_owner" | "rivr_admin" | "driver";
+  role: "business_owner" | "rivr_admin" | "driver" | "employee_viewer";
   tenantId?: number;
   businessName?: string;
   subdomain?: string;
   driverId?: number;
   iat?: number;
   exp?: number;
+  name?: string;
 }
 
 export interface RefreshTokenPayload {
@@ -512,6 +513,96 @@ export const authenticateRivrAdmin = async (
     };
   } catch (error) {
     log("error", "RIVR admin authentication failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { success: false, message: "Authentication failed" };
+  }
+};
+
+// Business employee (viewer) authentication
+export const authenticateBusinessEmployee = async (
+  email: string,
+  password: string,
+  businessId: number | undefined
+) => {
+  try {
+    if (!businessId) {
+      return { success: false, message: "Unknown tenant for employee login" };
+    }
+
+    // Find employee in shared schema scoped by businessId
+    const { businessEmployees } = await import("@repo/schema");
+
+    const [employee] = await db
+      .select()
+      .from(businessEmployees)
+      .where(
+        and(
+          eq(businessEmployees.businessId, businessId),
+          eq(businessEmployees.email, email)
+        )
+      )
+      .limit(1);
+
+    if (!employee) {
+      return { success: false, message: "Invalid credentials" };
+    }
+
+    if (!employee.isActive) {
+      return { success: false, message: "Employee account is inactive" };
+    }
+
+    const isValidPassword = await comparePassword(
+      password,
+      (employee as any).password || ""
+    );
+    if (!isValidPassword) {
+      return { success: false, message: "Invalid credentials" };
+    }
+
+    const accessToken = generateAccessToken({
+      userId: employee.id,
+      email: employee.email,
+      role: "employee_viewer",
+      tenantId: businessId,
+      name: employee.name as any,
+    });
+
+    const refreshTokenId = `emp_${employee.id}_${Date.now()}`;
+    const refreshToken = generateRefreshToken({
+      userId: employee.id,
+      email: employee.email,
+      role: "employee_viewer",
+      tokenId: refreshTokenId,
+      tenantId: businessId,
+    });
+
+    // Best-effort session record
+    await recordRefreshToken({
+      tokenId: refreshTokenId,
+      userId: employee.id,
+      role: "employee_viewer",
+      tenantId: businessId,
+    });
+
+    const nameParts = String((employee as any).name || "").split(" ");
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+
+    return {
+      success: true,
+      user: {
+        id: employee.id,
+        email: employee.email,
+        firstName,
+        lastName,
+        role: "employee_viewer",
+      },
+      accessToken,
+      refreshToken,
+    };
+  } catch (error) {
+    log("error", "Business employee authentication failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     return { success: false, message: "Authentication failed" };

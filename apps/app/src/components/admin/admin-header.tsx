@@ -4,6 +4,9 @@ import { RivrLogo } from "@/components/rivr-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Truck, ExternalLink, LogOut } from "lucide-react";
 import Link from "next/link";
+import { useIsMobile } from "@/hooks";
+import { useAuth } from "@/lib/auth";
+import { Badge } from "../ui";
 
 interface AdminHeaderProps {
   title: string;
@@ -26,20 +29,27 @@ export function AdminHeader({
   driverLinkText = "Driver Dashboard",
   customerLinkText = "Customer View",
 }: AdminHeaderProps) {
+  const isMobile = useIsMobile();
+  const { user } = useAuth();
   return (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
-        <RivrLogo size="md" customLogo={customLogo} />
+    <div className="flex flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-row items-start sm:items-center gap-4 w-full sm:w-auto">
+        <RivrLogo size={isMobile ? "sm" : "md"} customLogo={customLogo} />
         <div className="text-left flex-1">
-          <h1 className="mobile-title text-foreground mb-1 tracking-wide">
+          <h1 className="mobile-title text-foreground mb-1 tracking-wide line-clamp-1">
             {title}
           </h1>
-          <p className="text-muted-foreground mobile-caption tracking-wide">
-            {subtitle}
-          </p>
+          <div className="flex flex-row items-center gap-2">
+            <p className="text-muted-foreground mobile-caption tracking-wide line-clamp-1">
+              Welcome, {user?.name}
+            </p>
+            <Badge variant="outline">
+              {user?.role.replaceAll("_", " ").toLowerCase()}
+            </Badge>
+          </div>
         </div>
       </div>
-      <div className="mobile-flex-row w-full sm:w-auto">
+      <div className="mobile-flex-row sm:w-auto flex gap-2 items-center">
         <ThemeToggle />
         {showDriverLink && (
           <Link href="/driver">
@@ -48,20 +58,18 @@ export function AdminHeader({
               className="border-orange-500 text-orange-400 hover:bg-orange-500 hover:text-white mobile-button w-full sm:w-auto tap-highlight-none"
             >
               <Truck className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">{driverLinkText}</span>
               <span className="sm:hidden">Driver</span>
             </Button>
           </Link>
         )}
         {showCustomerLink && (
           <Button
-            onClick={() => (window.location.href = "/customer")}
+            onClick={() => (window.location.href = "/")}
             variant="outline"
-            className="border-cyan-500 text-cyan-400 hover:bg-cyan-500 hover:text-white mobile-button w-full sm:w-auto tap-highlight-none"
+            className="border-cyan-500 text-cyan-400 hover:bg-cyan-500 hover:text-white mobile-button sm:w-auto tap-highlight-none"
           >
             <ExternalLink className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">{customerLinkText}</span>
-            <span className="sm:hidden">Customer</span>
+            <span className="hidden sm:inline">Customer</span>
           </Button>
         )}
         <Button
@@ -71,11 +79,10 @@ export function AdminHeader({
             onLogout();
           }}
           variant="outline"
-          className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white mobile-button w-full sm:w-auto tap-highlight-none"
+          className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white mobile-button sm:w-auto tap-highlight-none"
         >
           <LogOut className="w-4 h-4 mr-2" />
           <span className="hidden sm:inline">Logout</span>
-          <span className="sm:hidden">Logout</span>
         </Button>
       </div>
     </div>

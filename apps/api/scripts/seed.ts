@@ -18,23 +18,85 @@ async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, saltRounds);
 }
 
+function esc(input: string): string {
+  return input.replace(/'/g, "''");
+}
+
 type Mode = "full" | "auth";
+
+type BusinessRow = {
+  id: number;
+  business_name: string;
+  subdomain: string;
+  database_schema: string;
+};
+
+async function tryDeleteTable(fullyQualifiedTableName: string): Promise<void> {
+  try {
+    await db.execute(`DELETE FROM ${fullyQualifiedTableName}`);
+    console.log(`🧹 Cleared table: ${fullyQualifiedTableName}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      message.includes("does not exist") ||
+      message.includes("undefined_table") ||
+      message.includes('relation "')
+    ) {
+      console.log(
+        `ℹ️ Skipped clearing ${fullyQualifiedTableName} (table not found)`
+      );
+    } else {
+      console.log(`⚠️ Could not clear ${fullyQualifiedTableName}: ${message}`);
+    }
+  }
+}
 
 async function clearData(mode: Mode): Promise<void> {
   console.log("🗑️  Clearing existing data...");
   if (mode === "full") {
-    await db.execute("DELETE FROM route_stops");
-    await db.execute("DELETE FROM routes");
-    await db.execute("DELETE FROM pickup_requests");
-    await db.execute("DELETE FROM quote_requests");
-    await db.execute("DELETE FROM customers");
+    // Remove dependent data in FK-safe order
+    await tryDeleteTable("email_automation_log");
+    await tryDeleteTable("route_stops");
+    await tryDeleteTable("routes");
+    await tryDeleteTable("quote_requests");
   }
-  await db.execute("DELETE FROM driver_messages");
-  await db.execute("DELETE FROM driver_status_updates");
-  await db.execute("DELETE FROM drivers");
-  await db.execute("DELETE FROM rivr_admins");
-  await db.execute("DELETE FROM businesses");
-  await db.execute("DELETE FROM users");
+  // Always remove pickups and customers at both global and tenant levels
+  await tryDeleteTable("pickup_requests");
+  await tryDeleteTable("customers");
+  // Remove tenant-scoped pickups and customers
+  try {
+    const result:
+      | { rows?: Array<{ database_schema: string }> }
+      | Array<{ database_schema: string }> = await db.execute(
+      `SELECT database_schema FROM businesses`
+    );
+    const container = result as
+      | { rows?: Array<{ database_schema: string }> }
+      | Array<{ database_schema: string }>;
+    const tenants: Array<{ database_schema: string }> = Array.isArray(container)
+      ? container
+      : (container.rows ?? []);
+    for (const t of tenants) {
+      await tryDeleteTable(`${t.database_schema}.pickup_requests`);
+      await tryDeleteTable(`${t.database_schema}.customers`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(
+      `⚠️ Could not enumerate tenant schemas to clear pickups/customers: ${message}`
+    );
+  }
+  await tryDeleteTable("driver_messages");
+  await tryDeleteTable("driver_status_updates");
+  await tryDeleteTable("drivers");
+  await tryDeleteTable("rivr_admins");
+  // Platform-level tables that reference businesses must be cleared before businesses
+  await tryDeleteTable("business_employees");
+  await tryDeleteTable("business_settings");
+  await tryDeleteTable("business_analytics");
+  await tryDeleteTable("refresh_tokens");
+  await tryDeleteTable("businesses");
+  await tryDeleteTable("users");
 }
 
 async function seedAuth(): Promise<void> {
@@ -134,6 +196,18 @@ async function seedAuth(): Promise<void> {
       status: "active",
       subscription_plan: "enterprise",
     },
+    {
+      business_name: "the wheel house",
+      owner_first_name: "William",
+      owner_last_name: "House",
+      owner_email: "owner@thewheelhouse.com",
+      phone: "(555) 555-1212",
+      address: "789 Wheel Way, Rivertown, CA 90212",
+      subdomain: "the-wheel-house",
+      database_schema: "the_wheel_house",
+      status: "active",
+      subscription_plan: "professional",
+    },
   ];
 
   for (const business of businessUsers) {
@@ -149,147 +223,120 @@ async function seedAuth(): Promise<void> {
 }
 
 async function seedFullExtras(): Promise<void> {
-  console.log("👥 Creating customers...");
-  const customersData = [
-    {
-      first_name: "John",
-      last_name: "Customer",
-      email: "john@customer.com",
-      phone: "(555) 777-8888",
-      business_name: "Customer Auto",
-      address: "321 Customer St, Customer City, CA 90213",
-      access_token: "customer_token_1",
-    },
-    {
-      first_name: "Alice",
-      last_name: "Client",
-      email: "alice@client.com",
-      phone: "(555) 999-0000",
-      business_name: "Client Motors",
-      address: "654 Client Ave, Client Town, CA 90214",
-      access_token: "customer_token_2",
-    },
-    {
-      first_name: "Bob",
-      last_name: "User",
-      email: "bob@user.com",
-      phone: "(555) 111-3333",
-      business_name: "User Garage",
-      address: "987 User Rd, User Village, CA 90215",
-      access_token: "customer_token_3",
-    },
-  ];
+  // Fetch businesses and seed each tenant schema with unique data
+  const bizRes: { rows?: BusinessRow[] } | BusinessRow[] = await db.execute(
+    `SELECT id, business_name, subdomain, database_schema FROM businesses`
+  );
+  const bizContainer = bizRes as { rows?: BusinessRow[] } | BusinessRow[];
+  const bizRows: BusinessRow[] = Array.isArray(bizContainer)
+    ? bizContainer
+    : (bizContainer.rows ?? []);
 
-  const createdCustomers: Array<{ id: number } & Record<string, unknown>> = [];
-  for (const c of customersData) {
-    const result: any = await db.execute(
-      `INSERT INTO customers (first_name, last_name, email, phone, business_name, address, access_token)
-       VALUES ('${c.first_name}', '${c.last_name}', '${c.email}', '${c.phone}', '${c.business_name}', '${c.address}', '${c.access_token}') RETURNING id`
+  for (const b of bizRows) {
+    const schema = b.database_schema;
+    console.log(
+      `\n🏗️  Ensuring tenant schema '${schema}' for ${b.business_name}`
     );
-    const id = result[0]?.id || result.rows?.[0]?.id;
-    createdCustomers.push({ ...c, id });
-  }
-  console.log(`✅ Created ${createdCustomers.length} customers`);
-
-  console.log("📦 Creating pickup requests...");
-  const pickupRequestsData = [
-    {
-      customer_id: createdCustomers[0].id,
-      first_name: "John",
-      last_name: "Customer",
-      email: "john@customer.com",
-      phone: "(555) 777-8888",
-      business_name: "Customer Auto",
-      address: "321 Customer St, Customer City, CA 90213",
-      wheel_count: 4,
-      latitude: "34.0522",
-      longitude: "-118.2437",
-      production_status: "pending",
-      priority: "normal",
-      customer_notes: "Please pick up in the morning",
-    },
-    {
-      customer_id: createdCustomers[1].id,
-      first_name: "Alice",
-      last_name: "Client",
-      email: "alice@client.com",
-      phone: "(555) 999-0000",
-      business_name: "Client Motors",
-      address: "654 Client Ave, Client Town, CA 90214",
-      wheel_count: 2,
-      latitude: "34.0522",
-      longitude: "-118.2437",
-      production_status: "in_process",
-      priority: "high",
-      customer_notes: "Urgent pickup needed",
-    },
-  ];
-
-  const createdPickups: Array<{ id: number } & Record<string, unknown>> = [];
-  for (const p of pickupRequestsData) {
-    const result: any = await db.execute(
-      `INSERT INTO pickup_requests (customer_id, first_name, last_name, email, phone, business_name, address, wheel_count, latitude, longitude, production_status, priority, customer_notes)
-       VALUES (${p.customer_id}, '${p.first_name}', '${p.last_name}', '${p.email}', '${p.phone}', '${p.business_name}', '${p.address}', ${p.wheel_count}, '${p.latitude}', '${p.longitude}', '${p.production_status}', '${p.priority}', '${p.customer_notes}') RETURNING id`
-    );
-    const id = result[0]?.id || result.rows?.[0]?.id;
-    createdPickups.push({ ...p, id });
-  }
-  console.log(`✅ Created ${createdPickups.length} pickup requests`);
-
-  console.log("💬 Creating quote requests...");
-  const quoteRequestsData = [
-    {
-      first_name: "Tom",
-      last_name: "Quote",
-      email: "tom@quote.com",
-      phone: "(555) 444-5555",
-      business_name: "Quote Auto",
-      description: "Need quote for 10 wheels pickup service",
-      photos: ["photo1.jpg", "photo2.jpg"],
-    },
-  ];
-  for (const q of quoteRequestsData) {
-    await db.execute(
-      `INSERT INTO quote_requests (first_name, last_name, email, phone, business_name, description, photos)
-       VALUES ('${q.first_name}', '${q.last_name}', '${q.email}', '${q.phone}', '${q.business_name}', '${q.description}', ARRAY[${q.photos
-         .map((p) => `'${p}'`)
-         .join(", ")}])`
-    );
-  }
-  console.log("✅ Created quote requests");
-
-  console.log("🗺️  Creating routes + stops...");
-  const routesData = [
-    {
-      name: "Morning Route - Alex",
-      driver_email: "alex@rivr.com",
-      status: "active",
-      estimated_duration: 240,
-      total_distance: "45.5",
-    },
-  ];
-
-  for (const r of routesData) {
-    // Find driver id by email
-    const driverRow: any = await db.execute(
-      `SELECT id FROM drivers WHERE email='${r.driver_email}' LIMIT 1`
-    );
-    const driverId = driverRow[0]?.id || driverRow.rows?.[0]?.id;
-    if (!driverId) continue;
-    const routeRes: any = await db.execute(
-      `INSERT INTO routes (name, driver_id, status, estimated_duration, total_distance)
-       VALUES ('${r.name}', ${driverId}, '${r.status}', ${r.estimated_duration}, '${r.total_distance}') RETURNING id`
-    );
-    const routeId = routeRes[0]?.id || routeRes.rows?.[0]?.id;
-    // Add one stop if pickups exist
-    if (createdPickups.length > 0) {
-      await db.execute(
-        `INSERT INTO route_stops (route_id, stop_type, pickup_request_id, customer_id, address, business_name, contact_name, contact_phone, stop_order)
-         VALUES (${routeId}, 'pickup', ${createdPickups[0].id}, NULL, '${createdPickups[0].address}', '${createdPickups[0].business_name}', '${createdPickups[0].first_name} ${createdPickups[0].last_name}', '${createdPickups[0].phone}', 1)`
+    // Ensure schema + tables exist
+    await db.execute(`CREATE SCHEMA IF NOT EXISTS ${schema};`);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS ${schema}.drivers (
+        id serial PRIMARY KEY,
+        name text NOT NULL,
+        email text,
+        phone text,
+        license_number text,
+        pin text,
+        password text,
+        status text DEFAULT 'available' NOT NULL,
+        is_active boolean DEFAULT true NOT NULL,
+        current_latitude text,
+        current_longitude text,
+        created_at timestamp DEFAULT now() NOT NULL
       );
+    `);
+    // Backfill columns that may be missing from older tenant schemas
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS license_number text;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS password text;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS status text DEFAULT 'available' NOT NULL;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true NOT NULL;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS current_latitude text;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS current_longitude text;`
+    );
+    await db.execute(
+      `ALTER TABLE ${schema}.drivers ADD COLUMN IF NOT EXISTS created_at timestamp DEFAULT now() NOT NULL;`
+    );
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS ${schema}.routes (
+        id serial PRIMARY KEY,
+        name text NOT NULL,
+        driver_id integer,
+        status text DEFAULT 'pending' NOT NULL,
+        total_distance text,
+        estimated_duration integer,
+        actual_duration integer,
+        start_time timestamp,
+        end_time timestamp,
+        optimized_waypoints text,
+        created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+    // Tenant seed focuses on drivers and supporting entities only
+
+    console.log(`🚛 Seeding drivers for ${b.business_name}...`);
+    // Ensure exactly three drivers per tenant by clearing existing rows first
+    await tryDeleteTable(`${schema}.drivers`);
+
+    // Ensure known test drivers exist in each tenant with hashed passwords
+    console.log(`👤 Seeding test driver credentials for ${b.business_name}...`);
+    const tenantDriverPassword = await hashPassword("driver123");
+    const testDrivers = [
+      {
+        name: "Alex Johnson",
+        email: "alex@rivr.com",
+        phone: "(555) 123-4567",
+        license_number: "DL123456789",
+      },
+      {
+        name: "Maria Garcia",
+        email: "maria@rivr.com",
+        phone: "(555) 234-5678",
+        license_number: "DL987654321",
+      },
+      {
+        name: "David Chen",
+        email: "david@rivr.com",
+        phone: "(555) 345-6789",
+        license_number: "DL456789123",
+      },
+    ];
+    // Remove any existing rows for these emails (some environments lack a unique index on email)
+    const emailsCsv = testDrivers.map((d) => `'${esc(d.email)}'`).join(",");
+    await db.execute(
+      `DELETE FROM ${schema}.drivers WHERE email IN (${emailsCsv});`
+    );
+    for (const d of testDrivers) {
+      await db.execute(`
+        INSERT INTO ${schema}.drivers (name, email, phone, license_number, password, status, is_active)
+        VALUES ('${esc(d.name)}', '${esc(d.email)}', '${esc(d.phone)}', '${esc(d.license_number)}', '${tenantDriverPassword}', 'available', true);
+      `);
     }
+    console.log("✅ 3 drivers created with passwords");
+
+    // End of tenant-specific seeding
   }
-  console.log("✅ Created routes and stops");
 }
 
 async function main() {
@@ -318,6 +365,7 @@ async function main() {
   console.log("\n🏢 Business Users:");
   console.log("  Email: robert@smithauto.com | Password: business123");
   console.log("  Email: jane@doemotors.com | Password: business123");
+  console.log("  Email: owner@thewheelhouse.com | Password: business123");
 }
 
 main()

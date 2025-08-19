@@ -18,6 +18,7 @@ import { RivrLogo } from "../rivr-logo";
 import { ThemeToggle } from "../theme-toggle";
 import { TenantBranding } from "../tenant-branding";
 import { useAuth } from "@/lib/auth";
+import { useBusinessSettings } from "@/hooks/use-business-settings";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,21 +27,30 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./dropdown-menu";
+import { useTenant } from "@/lib/tenant-context";
 
 interface HeaderProps {
   className?: string;
   withPortalMenu?: boolean;
   minimal?: boolean;
+  customLogo?: string | null;
 }
 
 export function Header({
   className = "",
   withPortalMenu = true,
   minimal = false,
+  customLogo: propCustomLogo,
 }: HeaderProps) {
   const [showPortals, setShowPortals] = useState(false);
   const router = useRouter();
   const { user, isAuthenticated, logout } = useAuth();
+  const { subdomain } = useTenant();
+  const { customLogo: hookCustomLogo, isLoading: isLoadingSettings } =
+    useBusinessSettings();
+
+  // Use prop if provided, otherwise use hook value
+  const customLogo = propCustomLogo ?? hookCustomLogo;
 
   const handleLogout = async () => {
     await logout();
@@ -80,6 +90,12 @@ export function Header({
           label: "Admin Portal",
           icon: Shield,
         };
+      case "employee_viewer":
+        return {
+          href: "/business-admin",
+          label: "Employee Portal",
+          icon: User,
+        };
       default:
         return null;
     }
@@ -88,10 +104,14 @@ export function Header({
   const portalLink = getPortalLink();
 
   return (
-    <header className={`w-full ${className}`}>
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
-        <div className="flex items-center w-full sm:w-auto">
-          <RivrLogo size={minimal ? "sm" : "xl"} />
+    <header className={`w-full p-4 ${className}`}>
+      <div className="flex flex-row justify-between items-center sm:items-center mb-4 gap-3">
+        <div className="flex items-center w-full sm:w-auto gap-2">
+          <RivrLogo
+            size={minimal ? "sm" : "md"}
+            customLogo={customLogo}
+            isLoading={isLoadingSettings}
+          />
           <TenantBranding />
         </div>
 
@@ -182,14 +202,16 @@ export function Header({
                       <Building2 className="w-4 h-4 mr-2" />
                       Business Portal
                     </Button>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      onClick={() => router.push("/rivr-exec")}
-                    >
-                      <Settings className="w-4 h-4 mr-2" />
-                      Admin Portal
-                    </Button>
+                    {!subdomain && (
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        onClick={() => router.push("/rivr-exec")}
+                      >
+                        <Settings className="w-4 h-4 mr-2" />
+                        Admin Portal
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       className="w-full justify-start text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -197,6 +219,14 @@ export function Header({
                     >
                       <Truck className="w-4 h-4 mr-2" />
                       Driver Portal
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      onClick={() => router.push("/employee")}
+                    >
+                      <Building2 className="w-4 h-4 mr-2" />
+                      Employee Portal
                     </Button>
                   </div>
                 )}

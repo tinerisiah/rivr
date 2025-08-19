@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FileText, ArrowLeft } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface UserInfo {
   firstName: string;
@@ -16,6 +17,7 @@ interface UserInfo {
 
 export function PickupWidget() {
   const router = useRouter();
+  const { toast } = useToast();
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [customerToken, setCustomerToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -52,16 +54,26 @@ export function PickupWidget() {
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Show success message
-      alert("Pickup request sent successfully!");
+      toast({
+        title: "Pickup Requested",
+        description: "Your pickup request was sent successfully.",
+      });
     } catch (error) {
-      alert("Failed to send pickup request. Please try again.");
+      toast({
+        title: "Pickup Failed",
+        description: "Failed to send pickup request. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleQuoteRequest = () => {
-    alert("Quote request feature coming soon!");
+    toast({
+      title: "Coming Soon",
+      description: "Quote request feature is coming soon.",
+    });
   };
 
   const getStatusText = () => {

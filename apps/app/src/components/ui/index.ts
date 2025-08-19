@@ -1,6 +1,7 @@
 export { Alert, AlertDescription, AlertTitle } from "./alert";
 export { Badge } from "./badge";
 export { Button } from "./button";
+export { Separator } from "./separator";
 export {
   Card,
   CardContent,
@@ -65,4 +66,4 @@ export {
   ToastTitle,
   ToastViewport,
 } from "./toast";
-export { Toaster } from "./toaster";
+export { Toaster } from "./sonner";

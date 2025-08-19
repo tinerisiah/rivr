@@ -14,105 +14,162 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Database enums for better type safety and constraints
-export const productionStatusEnum = pgEnum('production_status', [
-  'pending',
-  'in_process', 
-  'ready_for_delivery',
-  'ready_to_bill',
-  'billed',
-  'archived'
+export const productionStatusEnum = pgEnum("production_status", [
+  "pending",
+  "in_process",
+  "ready_for_delivery",
+  "ready_to_bill",
+  "billed",
+  "archived",
 ]);
 
-export const routeStopTypeEnum = pgEnum('route_stop_type', ['pickup', 'dropoff']);
-export const priorityEnum = pgEnum('priority', ['low', 'normal', 'high', 'urgent']);
+export const routeStopTypeEnum = pgEnum("route_stop_type", [
+  "pickup",
+  "dropoff",
+]);
+export const priorityEnum = pgEnum("priority", [
+  "low",
+  "normal",
+  "high",
+  "urgent",
+]);
 
 // Multi-tenant enums
-export const subscriptionStatusEnum = pgEnum('subscription_status', [
-  'trial',
-  'active', 
-  'past_due',
-  'canceled',
-  'suspended'
+export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "trial",
+  "active",
+  "past_due",
+  "canceled",
+  "suspended",
 ]);
 
-export const subscriptionPlanEnum = pgEnum('subscription_plan', [
-  'starter',
-  'professional', 
-  'enterprise'
+export const subscriptionPlanEnum = pgEnum("subscription_plan", [
+  "starter",
+  "professional",
+  "enterprise",
 ]);
 
-export const businessStatusEnum = pgEnum('business_status', [
-  'pending',
-  'active',
-  'suspended', 
-  'canceled'
+export const businessStatusEnum = pgEnum("business_status", [
+  "pending",
+  "active",
+  "suspended",
+  "canceled",
 ]);
 
 // Multi-tenant business accounts table (RIVR platform level)
-export const businesses = pgTable("businesses", {
-  id: serial("id").primaryKey(),
-  businessName: text("business_name").notNull(),
-  ownerFirstName: text("owner_first_name").notNull(),
-  ownerLastName: text("owner_last_name").notNull(),
-  ownerEmail: text("owner_email").notNull().unique(),
-  phone: text("phone"),
-  address: text("address"),
-  subdomain: text("subdomain").notNull().unique(), // unique subdomain for each business
-  customDomain: text("custom_domain"), // optional custom domain
-  databaseSchema: text("database_schema").notNull().unique(), // unique schema name
-  status: businessStatusEnum("status").default('pending').notNull(),
-  subscriptionPlan: subscriptionPlanEnum("subscription_plan").default('starter').notNull(),
-  subscriptionStatus: subscriptionStatusEnum("subscription_status").default('trial').notNull(),
-  subscriptionStartDate: timestamp("subscription_start_date"),
-  subscriptionEndDate: timestamp("subscription_end_date"),
-  trialEndsAt: timestamp("trial_ends_at"),
-  monthlyRevenue: integer("monthly_revenue").default(0), // in cents
-  annualRevenue: integer("annual_revenue").default(0), // in cents
-  maxUsers: integer("max_users").default(10).notNull(),
-  maxDrivers: integer("max_drivers").default(5).notNull(),
-  maxCustomers: integer("max_customers").default(1000).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  ownerEmailIdx: uniqueIndex("businesses_owner_email_idx").on(table.ownerEmail),
-  subdomainIdx: uniqueIndex("businesses_subdomain_idx").on(table.subdomain),
-  statusIdx: index("businesses_status_idx").on(table.status),
-  subscriptionStatusIdx: index("businesses_subscription_status_idx").on(table.subscriptionStatus),
-}));
+export const businesses = pgTable(
+  "businesses",
+  {
+    id: serial("id").primaryKey(),
+    businessName: text("business_name").notNull(),
+    ownerFirstName: text("owner_first_name").notNull(),
+    ownerLastName: text("owner_last_name").notNull(),
+    ownerEmail: text("owner_email").notNull().unique(),
+    phone: text("phone"),
+    address: text("address"),
+    subdomain: text("subdomain").notNull().unique(), // unique subdomain for each business
+    customDomain: text("custom_domain"), // optional custom domain
+    databaseSchema: text("database_schema").notNull().unique(), // unique schema name
+    status: businessStatusEnum("status").default("pending").notNull(),
+    subscriptionPlan: subscriptionPlanEnum("subscription_plan")
+      .default("starter")
+      .notNull(),
+    subscriptionStatus: subscriptionStatusEnum("subscription_status")
+      .default("trial")
+      .notNull(),
+    subscriptionStartDate: timestamp("subscription_start_date"),
+    subscriptionEndDate: timestamp("subscription_end_date"),
+    trialEndsAt: timestamp("trial_ends_at"),
+    monthlyRevenue: integer("monthly_revenue").default(0), // in cents
+    annualRevenue: integer("annual_revenue").default(0), // in cents
+    maxUsers: integer("max_users").default(10).notNull(),
+    maxDrivers: integer("max_drivers").default(5).notNull(),
+    maxCustomers: integer("max_customers").default(1000).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    ownerEmailIdx: uniqueIndex("businesses_owner_email_idx").on(
+      table.ownerEmail
+    ),
+    subdomainIdx: uniqueIndex("businesses_subdomain_idx").on(table.subdomain),
+    statusIdx: index("businesses_status_idx").on(table.status),
+    subscriptionStatusIdx: index("businesses_subscription_status_idx").on(
+      table.subscriptionStatus
+    ),
+  })
+);
 
 // RIVR platform admin users (your executive portal users)
-export const rivrAdmins = pgTable("rivr_admins", {
-  id: serial("id").primaryKey(),
-  firstName: text("first_name").notNull(),
-  lastName: text("last_name").notNull(),
-  email: text("email").notNull().unique(),
-  password: text("password").notNull(), // hashed
-  role: text("role").default('admin').notNull(), // admin, super_admin
-  isActive: boolean("is_active").default(true).notNull(),
-  lastLoginAt: timestamp("last_login_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  emailIdx: uniqueIndex("rivr_admins_email_idx").on(table.email),
-}));
+export const rivrAdmins = pgTable(
+  "rivr_admins",
+  {
+    id: serial("id").primaryKey(),
+    firstName: text("first_name").notNull(),
+    lastName: text("last_name").notNull(),
+    email: text("email").notNull().unique(),
+    password: text("password").notNull(), // hashed
+    role: text("role").default("admin").notNull(), // admin, super_admin
+    isActive: boolean("is_active").default(true).notNull(),
+    lastLoginAt: timestamp("last_login_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    emailIdx: uniqueIndex("rivr_admins_email_idx").on(table.email),
+  })
+);
 
 // Business analytics and metrics
-export const businessAnalytics = pgTable("business_analytics", {
-  id: serial("id").primaryKey(),
-  businessId: integer("business_id").references(() => businesses.id).notNull(),
-  month: text("month").notNull(), // YYYY-MM format
-  totalPickups: integer("total_pickups").default(0).notNull(),
-  completedPickups: integer("completed_pickups").default(0).notNull(),
-  totalRevenue: integer("total_revenue").default(0).notNull(), // in cents
-  activeCustomers: integer("active_customers").default(0).notNull(),
-  activeDrivers: integer("active_drivers").default(0).notNull(),
-  averageCompletionTime: integer("average_completion_time").default(0), // in minutes
-  customerSatisfactionScore: integer("customer_satisfaction_score").default(0), // 1-10 scale
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  businessMonthIdx: uniqueIndex("business_analytics_business_month_idx").on(table.businessId, table.month),
-  businessIdx: index("business_analytics_business_idx").on(table.businessId),
-}));
+export const businessAnalytics = pgTable(
+  "business_analytics",
+  {
+    id: serial("id").primaryKey(),
+    businessId: integer("business_id")
+      .references(() => businesses.id)
+      .notNull(),
+    month: text("month").notNull(), // YYYY-MM format
+    totalPickups: integer("total_pickups").default(0).notNull(),
+    completedPickups: integer("completed_pickups").default(0).notNull(),
+    totalRevenue: integer("total_revenue").default(0).notNull(), // in cents
+    activeCustomers: integer("active_customers").default(0).notNull(),
+    activeDrivers: integer("active_drivers").default(0).notNull(),
+    averageCompletionTime: integer("average_completion_time").default(0), // in minutes
+    customerSatisfactionScore: integer("customer_satisfaction_score").default(
+      0
+    ), // 1-10 scale
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessMonthIdx: uniqueIndex("business_analytics_business_month_idx").on(
+      table.businessId,
+      table.month
+    ),
+    businessIdx: index("business_analytics_business_idx").on(table.businessId),
+  })
+);
+
+// Business settings table for tenant-specific configuration
+export const businessSettings = pgTable(
+  "business_settings",
+  {
+    id: serial("id").primaryKey(),
+    businessId: integer("business_id")
+      .notNull()
+      .references(() => businesses.id),
+    customLogo: text("custom_logo"), // URL or base64 data for the logo
+    customBranding: text("custom_branding"), // JSON string for additional branding
+    emailSettings: text("email_settings"), // JSON string for email preferences
+    notificationSettings: text("notification_settings"), // JSON string for notification preferences
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    businessIdIdx: uniqueIndex("business_settings_business_id_idx").on(
+      table.businessId
+    ),
+  })
+);
 
 // Original users table (now per-business schema)
 export const users = pgTable("users", {
@@ -121,76 +178,95 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
 });
 
-export const customers = pgTable("customers", {
-  id: serial("id").primaryKey(),
-  firstName: text("first_name").notNull(),
-  lastName: text("last_name").notNull(),
-  email: text("email").notNull(),
-  phone: text("phone"),
-  businessName: text("business_name").notNull(),
-  address: text("address").notNull(),
-  accessToken: text("access_token").notNull().unique(),
-  emailUpdatesEnabled: boolean("email_updates_enabled").default(false).notNull(),
-  customSignature: text("custom_signature"),
-  customLogo: text("custom_logo"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  // Database indexes for performance
-  emailIdx: index("customers_email_idx").on(table.email),
-  businessNameIdx: index("customers_business_name_idx").on(table.businessName),
-  accessTokenIdx: uniqueIndex("customers_access_token_idx").on(table.accessToken),
-  nameIdx: index("customers_name_idx").on(table.lastName, table.firstName),
-}));
+export const customers = pgTable(
+  "customers",
+  {
+    id: serial("id").primaryKey(),
+    firstName: text("first_name").notNull(),
+    lastName: text("last_name").notNull(),
+    email: text("email").notNull(),
+    phone: text("phone"),
+    businessName: text("business_name").notNull(),
+    address: text("address").notNull(),
+    accessToken: text("access_token").notNull().unique(),
+    emailUpdatesEnabled: boolean("email_updates_enabled")
+      .default(false)
+      .notNull(),
+    customSignature: text("custom_signature"),
+    customLogo: text("custom_logo"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // Database indexes for performance
+    emailIdx: index("customers_email_idx").on(table.email),
+    businessNameIdx: index("customers_business_name_idx").on(
+      table.businessName
+    ),
+    accessTokenIdx: uniqueIndex("customers_access_token_idx").on(
+      table.accessToken
+    ),
+    nameIdx: index("customers_name_idx").on(table.lastName, table.firstName),
+  })
+);
 
-export const pickupRequests = pgTable("pickup_requests", {
-  id: serial("id").primaryKey(),
-  customerId: integer("customer_id")
-    .references(() => customers.id)
-    .notNull(),
-  firstName: text("first_name").notNull(),
-  lastName: text("last_name").notNull(),
-  email: text("email").notNull(),
-  phone: text("phone"),
-  businessName: text("business_name").notNull(),
-  address: text("address").notNull(),
-  wheelCount: integer("wheel_count").default(1).notNull(),
-  latitude: text("latitude"),
-  longitude: text("longitude"),
-  isCompleted: boolean("is_completed").default(false).notNull(),
-  completedAt: timestamp("completed_at"),
-  completionPhoto: text("completion_photo"),
-  completionLocation: text("completion_location"),
-  completionNotes: text("completion_notes"),
-  employeeName: text("employee_name"),
-  roNumber: text("ro_number"),
-  customerNotes: text("customer_notes"),
-  wheelQrCodes: text("wheel_qr_codes").array().default([]),
-  isDelivered: boolean("is_delivered").default(false).notNull(),
-  deliveredAt: timestamp("delivered_at"),
-  deliveryNotes: text("delivery_notes"),
-  deliveryQrCodes: text("delivery_qr_codes").array().default([]),
-  isArchived: boolean("is_archived").default(false).notNull(),
-  archivedAt: timestamp("archived_at"),
-  routeId: integer("route_id").references(() => routes.id),
-  routeOrder: integer("route_order"),
-  priority: priorityEnum("priority").default("normal"),
-  estimatedPickupTime: timestamp("estimated_pickup_time"),
-  // Production workflow status
-  productionStatus: productionStatusEnum("production_status").default("pending"),
-  billedAt: timestamp("billed_at"),
-  billedAmount: text("billed_amount"),
-  invoiceNumber: text("invoice_number"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => ({
-  // Performance indexes for pickup requests
-  customerIdIdx: index("pickup_requests_customer_id_idx").on(table.customerId),
-  statusIdx: index("pickup_requests_status_idx").on(table.productionStatus),
-  routeIdx: index("pickup_requests_route_idx").on(table.routeId),
-  completedIdx: index("pickup_requests_completed_idx").on(table.isCompleted),
-  createdAtIdx: index("pickup_requests_created_at_idx").on(table.createdAt),
-  businessNameIdx: index("pickup_requests_business_name_idx").on(table.businessName),
-}));
+export const pickupRequests = pgTable(
+  "pickup_requests",
+  {
+    id: serial("id").primaryKey(),
+    customerId: integer("customer_id")
+      .references(() => customers.id)
+      .notNull(),
+    firstName: text("first_name").notNull(),
+    lastName: text("last_name").notNull(),
+    email: text("email").notNull(),
+    phone: text("phone"),
+    businessName: text("business_name").notNull(),
+    address: text("address").notNull(),
+    wheelCount: integer("wheel_count").default(1).notNull(),
+    latitude: text("latitude"),
+    longitude: text("longitude"),
+    isCompleted: boolean("is_completed").default(false).notNull(),
+    completedAt: timestamp("completed_at"),
+    completionPhoto: text("completion_photo"),
+    completionLocation: text("completion_location"),
+    completionNotes: text("completion_notes"),
+    employeeName: text("employee_name"),
+    roNumber: text("ro_number"),
+    customerNotes: text("customer_notes"),
+    wheelQrCodes: text("wheel_qr_codes").array().default([]),
+    isDelivered: boolean("is_delivered").default(false).notNull(),
+    deliveredAt: timestamp("delivered_at"),
+    deliveryNotes: text("delivery_notes"),
+    deliveryQrCodes: text("delivery_qr_codes").array().default([]),
+    isArchived: boolean("is_archived").default(false).notNull(),
+    archivedAt: timestamp("archived_at"),
+    routeId: integer("route_id").references(() => routes.id),
+    routeOrder: integer("route_order"),
+    priority: priorityEnum("priority").default("normal"),
+    estimatedPickupTime: timestamp("estimated_pickup_time"),
+    // Production workflow status
+    productionStatus:
+      productionStatusEnum("production_status").default("pending"),
+    billedAt: timestamp("billed_at"),
+    billedAmount: text("billed_amount"),
+    invoiceNumber: text("invoice_number"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // Performance indexes for pickup requests
+    customerIdIdx: index("pickup_requests_customer_id_idx").on(
+      table.customerId
+    ),
+    statusIdx: index("pickup_requests_status_idx").on(table.productionStatus),
+    routeIdx: index("pickup_requests_route_idx").on(table.routeId),
+    completedIdx: index("pickup_requests_completed_idx").on(table.isCompleted),
+    createdAtIdx: index("pickup_requests_created_at_idx").on(table.createdAt),
+    businessNameIdx: index("pickup_requests_business_name_idx").on(
+      table.businessName
+    ),
+  })
+);
 
 export const quoteRequests = pgTable("quote_requests", {
   id: serial("id").primaryKey(),
@@ -262,9 +338,13 @@ export const routes = pgTable("routes", {
 // New table for individual route stops (both pickups and dropoffs)
 export const routeStops = pgTable("route_stops", {
   id: serial("id").primaryKey(),
-  routeId: integer("route_id").references(() => routes.id).notNull(),
+  routeId: integer("route_id")
+    .references(() => routes.id)
+    .notNull(),
   stopType: text("stop_type").notNull(), // 'pickup' or 'dropoff'
-  pickupRequestId: integer("pickup_request_id").references(() => pickupRequests.id),
+  pickupRequestId: integer("pickup_request_id").references(
+    () => pickupRequests.id
+  ),
   customerId: integer("customer_id").references(() => customers.id),
   address: text("address").notNull(),
   businessName: text("business_name").notNull(),
@@ -285,35 +365,47 @@ export const routeStops = pgTable("route_stops", {
 });
 
 // Email Templates table for customizable workflow email automation
-export const emailTemplates = pgTable("email_templates", {
-  id: serial("id").primaryKey(),
-  templateType: text("template_type").notNull(), // 'pending', 'in_process', 'ready_for_delivery', 'ready_to_bill', 'billed'
-  subject: text("subject").notNull(),
-  bodyTemplate: text("body_template").notNull(), // HTML template with placeholders
-  isActive: boolean("is_active").default(true).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => ({
-  templateTypeIdx: index("email_templates_type_idx").on(table.templateType),
-}));
+export const emailTemplates = pgTable(
+  "email_templates",
+  {
+    id: serial("id").primaryKey(),
+    templateType: text("template_type").notNull(), // 'pending', 'in_process', 'ready_for_delivery', 'ready_to_bill', 'billed'
+    subject: text("subject").notNull(),
+    bodyTemplate: text("body_template").notNull(), // HTML template with placeholders
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    templateTypeIdx: index("email_templates_type_idx").on(table.templateType),
+  })
+);
 
 // Email Automation Log for tracking sent emails
-export const emailAutomationLog = pgTable("email_automation_log", {
-  id: serial("id").primaryKey(),
-  customerId: integer("customer_id").references(() => customers.id).notNull(),
-  pickupRequestId: integer("pickup_request_id").references(() => pickupRequests.id).notNull(),
-  templateType: text("template_type").notNull(),
-  recipientEmail: text("recipient_email").notNull(),
-  subject: text("subject").notNull(),
-  sentBy: text("sent_by").notNull(), // email of the admin who triggered the status change
-  sentAt: timestamp("sent_at").defaultNow().notNull(),
-  status: text("status").default("sent").notNull(), // sent, failed, pending
-  errorMessage: text("error_message"),
-}, (table) => ({
-  customerIdx: index("email_log_customer_idx").on(table.customerId),
-  pickupIdx: index("email_log_pickup_idx").on(table.pickupRequestId),
-  sentAtIdx: index("email_log_sent_at_idx").on(table.sentAt),
-}));
+export const emailAutomationLog = pgTable(
+  "email_automation_log",
+  {
+    id: serial("id").primaryKey(),
+    customerId: integer("customer_id")
+      .references(() => customers.id)
+      .notNull(),
+    pickupRequestId: integer("pickup_request_id")
+      .references(() => pickupRequests.id)
+      .notNull(),
+    templateType: text("template_type").notNull(),
+    recipientEmail: text("recipient_email").notNull(),
+    subject: text("subject").notNull(),
+    sentBy: text("sent_by").notNull(), // email of the admin who triggered the status change
+    sentAt: timestamp("sent_at").defaultNow().notNull(),
+    status: text("status").default("sent").notNull(), // sent, failed, pending
+    errorMessage: text("error_message"),
+  },
+  (table) => ({
+    customerIdx: index("email_log_customer_idx").on(table.customerId),
+    pickupIdx: index("email_log_pickup_idx").on(table.pickupRequestId),
+    sentAtIdx: index("email_log_sent_at_idx").on(table.sentAt),
+  })
+);
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
@@ -416,29 +508,49 @@ export const insertRivrAdminSchema = createInsertSchema(rivrAdmins).omit({
   updatedAt: true,
 });
 
-export const insertBusinessAnalyticsSchema = createInsertSchema(businessAnalytics).omit({
+export const insertBusinessAnalyticsSchema = createInsertSchema(
+  businessAnalytics
+).omit({
   id: true,
   createdAt: true,
 });
 
-export type Business = typeof businesses.$inferSelect;
-export type InsertBusiness = z.infer<typeof insertBusinessSchema>;
-export type RivrAdmin = typeof rivrAdmins.$inferSelect;
-export type InsertRivrAdmin = z.infer<typeof insertRivrAdminSchema>;
-export type BusinessAnalytics = typeof businessAnalytics.$inferSelect;
-export type InsertBusinessAnalytics = z.infer<typeof insertBusinessAnalyticsSchema>;
-
-// Email automation schema definitions
-export const insertEmailTemplateSchema = createInsertSchema(emailTemplates).omit({
+export const insertBusinessSettingsSchema = createInsertSchema(
+  businessSettings
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const insertEmailLogSchema = createInsertSchema(emailAutomationLog).omit({
+export type Business = typeof businesses.$inferSelect;
+export type InsertBusiness = z.infer<typeof insertBusinessSchema>;
+export type BusinessSettings = typeof businessSettings.$inferSelect;
+export type InsertBusinessSettings = z.infer<
+  typeof insertBusinessSettingsSchema
+>;
+export type RivrAdmin = typeof rivrAdmins.$inferSelect;
+export type InsertRivrAdmin = z.infer<typeof insertRivrAdminSchema>;
+export type BusinessAnalytics = typeof businessAnalytics.$inferSelect;
+export type InsertBusinessAnalytics = z.infer<
+  typeof insertBusinessAnalyticsSchema
+>;
+
+// Email automation schema definitions
+export const insertEmailTemplateSchema = createInsertSchema(
+  emailTemplates
+).omit({
   id: true,
-  sentAt: true,
+  createdAt: true,
+  updatedAt: true,
 });
+
+export const insertEmailLogSchema = createInsertSchema(emailAutomationLog).omit(
+  {
+    id: true,
+    sentAt: true,
+  }
+);
 
 export type EmailTemplate = typeof emailTemplates.$inferSelect;
 export type InsertEmailTemplate = z.infer<typeof insertEmailTemplateSchema>;

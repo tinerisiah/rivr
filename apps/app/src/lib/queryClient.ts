@@ -10,6 +10,48 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function readBrowserCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie
+    .split(";")
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.split("=")[1]) : null;
+}
+
+function computeTenantSubdomain(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+
+  const baseDomain = (process.env.NEXT_PUBLIC_BASE_DOMAIN || "").toLowerCase();
+  const host = window.location.host.toLowerCase();
+
+  const getCookie = (name: string): string | null => {
+    const match = document.cookie
+      .split(";")
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(`${name}=`));
+    return match ? decodeURIComponent(match.split("=")[1]) : null;
+  };
+
+  const params = new URLSearchParams(window.location.search);
+  const qsTenant = params.get("subdomain") || params.get("tenant");
+  const lsTenant = window.localStorage.getItem("tenant_subdomain");
+  const cookieTenant = getCookie("tenant_subdomain");
+
+  let tenant = (qsTenant || lsTenant || cookieTenant || "").toLowerCase();
+
+  // Infer from host when baseDomain is configured and matches
+  if (!tenant && baseDomain && host.endsWith(`.${baseDomain}`)) {
+    const withoutBase = host.slice(0, -`.${baseDomain}`.length);
+    tenant = withoutBase || "";
+  }
+
+  if (tenant && tenant !== "www" && tenant !== "localhost") {
+    return tenant;
+  }
+  return undefined;
+}
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -19,9 +61,27 @@ export async function apiRequest(
   const fullUrl = url.startsWith("http") ? url : buildApiUrl(url);
   debugApiRequest(method, fullUrl, data);
 
+  const tenant = computeTenantSubdomain();
+  const authToken =
+    typeof window !== "undefined"
+      ? window.localStorage.getItem("accessToken") || undefined
+      : undefined;
+
+  const headers: Record<string, string> = {};
+  if (tenant) headers["X-Tenant-Subdomain"] = tenant;
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+  if (data !== undefined) headers["Content-Type"] = "application/json";
+
+  // Fallback header for customer session when httpOnly cookie isn't recognized
+  // (we set a readable cookie after POST to ensure continuity in dev/local)
+  if (typeof window !== "undefined") {
+    const customerToken = readBrowserCookie("customer_token");
+    if (customerToken) headers["X-Customer-Token"] = customerToken;
+  }
+
   const res = await fetch(fullUrl, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -40,8 +100,22 @@ export const getQueryFn: <T>(options: {
     const url = queryKey[0] as string;
     const fullUrl = url.startsWith("http") ? url : buildApiUrl(url);
 
+    const tenant = computeTenantSubdomain();
+    const authToken =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("accessToken") || undefined
+        : undefined;
+    const headers: Record<string, string> = {};
+    if (tenant) headers["X-Tenant-Subdomain"] = tenant;
+    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+    if (typeof window !== "undefined") {
+      const customerToken = readBrowserCookie("customer_token");
+      if (customerToken) headers["X-Customer-Token"] = customerToken;
+    }
+
     const res = await fetch(fullUrl, {
       credentials: "include",
+      headers,
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

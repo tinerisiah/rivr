@@ -1,15 +1,14 @@
 "use client";
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { buildApiUrl } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
-import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { AdminHeader } from "@/components/admin/admin-header";
+import { AdminTabs } from "@/components/admin/admin-tabs";
+import { BusinessForm } from "@/components/admin/business-form";
+import { CustomersTab } from "@/components/admin/customers-tab";
+import { DriversTab } from "@/components/admin/drivers-tab";
+import { EmployeesTab } from "@/components/admin/employees-tab";
+import { OverviewTab } from "@/components/admin/overview-tab";
+import { ProductionTab } from "@/components/admin/production-tab";
+import { SettingsTab } from "@/components/admin/settings-tab";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -25,69 +24,37 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RivrLogo } from "@/components/rivr-logo";
-import { ThemeToggle } from "@/components/theme-toggle";
-import LogoUpload from "@/components/logo-upload";
 import WelcomeAnimation, {
   useWelcomeAnimation,
 } from "@/components/welcome-animation";
-import { AdminHeader } from "@/components/admin/admin-header";
-import { AdminTabs } from "@/components/admin/admin-tabs";
-import { OverviewTab } from "@/components/admin/overview-tab";
-import { CustomersTab } from "@/components/admin/customers-tab";
-import { DriversTab } from "@/components/admin/drivers-tab";
-import { ProductionTab } from "@/components/admin/production-tab";
-import { QuotesTab } from "@/components/admin/quotes-tab";
-import { SettingsTab } from "@/components/admin/settings-tab";
-import { BusinessesTab } from "@/components/admin/businesses-tab";
-import { BusinessForm } from "@/components/admin/business-form";
+import { useToast } from "@/hooks/use-toast";
+import { API_BASE_URL } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type {
   Customer,
+  Driver,
   PickupRequest,
   QuoteRequest,
-  Driver,
-  InsertDriver,
-  EmailTemplate,
-  InsertEmailTemplate,
-  Business,
 } from "@/lib/schema";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 import {
-  Users,
-  Settings,
-  Plus,
-  Copy,
-  CheckCircle,
-  Clock,
-  FileText,
-  ExternalLink,
-  Truck,
-  Reply,
-  ArrowRightLeft,
-  Search,
-  Edit,
-  Phone,
-  Mail,
-  MapPin,
-  Building2,
-  Calendar,
-  User,
-  Package,
-  MessageSquare,
-  AlertTriangle,
-  BarChart3,
-  TrendingUp,
-  Filter,
-  Eye,
-  CalendarDays,
-  Camera,
-  Send,
-  LogOut,
-} from "lucide-react";
+  Select,
+  SelectItem,
+  SelectContent,
+  SelectTrigger,
+  SelectValue,
+  Checkbox,
+} from "./ui";
 
 // Form schemas
 const customerFormSchema = z.object({
@@ -114,6 +81,10 @@ const deliverPickupSchema = z.object({
 const driverFormSchema = z.object({
   name: z.string().min(1, "Driver name is required"),
   email: z.string().email("Please enter a valid email address"),
+  password: z
+    .string()
+    .min(6, "Password must be at least 6 characters")
+    .optional(),
   phone: z.string().optional(),
   licenseNumber: z.string().optional(),
 });
@@ -147,6 +118,8 @@ export function AdminPanelRefactored({
   onLogoChange,
 }: AdminPanelRefactoredProps) {
   const { user, isAuthenticated: isMainAuth, logout } = useAuth();
+  const isReadOnly = user?.role === "employee_viewer";
+
   const { toast } = useToast();
   const router = useRouter();
 
@@ -185,6 +158,8 @@ export function AdminPanelRefactored({
   const [selectedCustomerForEmail, setSelectedCustomerForEmail] =
     useState<Customer | null>(null);
   const [customSignature, setCustomSignature] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
   const [showJobDetailsModal, setShowJobDetailsModal] =
     useState<PickupRequest | null>(null);
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
@@ -266,6 +241,7 @@ export function AdminPanelRefactored({
     defaultValues: {
       name: "",
       email: "",
+      password: "",
       phone: "",
       licenseNumber: "",
     },
@@ -276,6 +252,7 @@ export function AdminPanelRefactored({
     defaultValues: {
       name: "",
       email: "",
+      password: "",
       phone: "",
       licenseNumber: "",
     },
@@ -318,12 +295,86 @@ export function AdminPanelRefactored({
   const { data: emailLogsData, isLoading: loadingEmailLogs } = useQuery({
     queryKey: ["/api/admin/email-logs"],
     enabled: showEmailLogsModal,
+    refetchInterval: 10000,
   });
 
-  const { data: businessesData, isLoading: loadingBusinesses } = useQuery({
-    queryKey: ["/api/admin/businesses"],
-    enabled: isMainAuth,
+  const createTemplateMutation = useMutation({
+    mutationFn: async (payload: {
+      templateType: string;
+      subject: string;
+      bodyTemplate: string;
+      isActive?: boolean;
+    }) => {
+      const res = await apiRequest(
+        "POST",
+        "/api/admin/email-templates",
+        payload
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/email-templates"],
+      });
+      toast({
+        title: "Template Created",
+        description: "Email template saved.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save template",
+        variant: "destructive",
+      });
+    },
   });
+
+  const updateTemplateMutation = useMutation({
+    mutationFn: async (payload: {
+      id: number;
+      subject?: string;
+      bodyTemplate?: string;
+      isActive?: boolean;
+      templateType?: string;
+    }) => {
+      const { id, ...updates } = payload;
+      const res = await apiRequest(
+        "PUT",
+        `/api/admin/email-templates/${id}`,
+        updates
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/email-templates"],
+      });
+      toast({
+        title: "Template Updated",
+        description: "Email template updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update template",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const [newTemplate, setNewTemplate] = useState({
+    templateType: "pending",
+    subject: "",
+    bodyTemplate: "",
+    isActive: true,
+  });
+
+  // const { data: businessesData, isLoading: loadingBusinesses } = useQuery({
+  //   queryKey: ["/api/admin/businesses"],
+  //   enabled: isMainAuth,
+  // });
 
   // Mutations
   const createCustomerMutation = useMutation({
@@ -527,10 +578,81 @@ export function AdminPanelRefactored({
   // Data extraction
   const customers = (customersData as any)?.customers || [];
   const requests = (requestsData as any)?.requests || [];
+  const rqClient = useQueryClient();
+  const pendingStatusUpdateIdsRef = useRef<Set<number>>(new Set());
+  // Realtime: subscribe to WS and invalidate production data on updates
+  useEffect(() => {
+    if (!isMainAuth) return;
+    let ws: WebSocket | null = null;
+    let heartbeat: number | null = null;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      try {
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("accessToken")
+            : null;
+        if (!token) return;
+        const url = new URL(API_BASE_URL);
+        const wsScheme = url.protocol === "https:" ? "wss" : "ws";
+        const wsUrl = `${wsScheme}://${url.host}/ws?token=${encodeURIComponent(token)}`;
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          heartbeat = window.setInterval(() => {
+            try {
+              ws?.send(JSON.stringify({ type: "ping", t: Date.now() }));
+            } catch {}
+          }, 20000);
+        };
+        ws.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data || "{}");
+            if (msg?.type === "PRODUCTION_STATUS_UPDATED") {
+              const updatedId = msg?.data?.id as number | undefined;
+              if (
+                updatedId &&
+                pendingStatusUpdateIdsRef.current.has(updatedId)
+              ) {
+                pendingStatusUpdateIdsRef.current.delete(updatedId);
+                return;
+              }
+              rqClient.invalidateQueries({
+                queryKey: ["/api/admin/pickup-requests"],
+              });
+            } else if (msg?.type === "NEW_PICKUP_REQUEST") {
+              rqClient.invalidateQueries({
+                queryKey: ["/api/admin/pickup-requests"],
+              });
+            }
+          } catch {}
+        };
+        ws.onclose = () => {
+          if (heartbeat) window.clearInterval(heartbeat);
+          heartbeat = null;
+          reconnectTimer = window.setTimeout(connect, 3000) as any;
+        };
+        ws.onerror = () => {
+          try {
+            ws?.close();
+          } catch {}
+        };
+      } catch {}
+    };
+
+    connect();
+    return () => {
+      if (heartbeat) window.clearInterval(heartbeat);
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      try {
+        ws?.close();
+      } catch {}
+    };
+  }, [isMainAuth, rqClient]);
+
   const quoteRequests = (quoteRequestsData as any)?.requests || [];
   const routes = (routesData as any)?.routes || [];
   const drivers = (driversData as any)?.drivers || [];
-  const businesses = (businessesData as any)?.businesses || [];
 
   // Event handlers
   const handleLogout = async () => {
@@ -606,6 +728,7 @@ export function AdminPanelRefactored({
     editDriverForm.reset({
       name: driver.name,
       email: driver.email,
+      password: "",
       phone: driver.phone || "",
       licenseNumber: driver.licenseNumber || "",
     });
@@ -660,6 +783,7 @@ export function AdminPanelRefactored({
 
   const updateProductionStatus = async (requestId: number, status: string) => {
     try {
+      pendingStatusUpdateIdsRef.current.add(requestId);
       const response = await apiRequest(
         "PUT",
         `/api/admin/pickup-requests/${requestId}/production-status`,
@@ -684,6 +808,12 @@ export function AdminPanelRefactored({
         description: "Failed to update production status",
         variant: "destructive",
       });
+    } finally {
+      // Remove the id after a short delay as a safety, in case we never get a WS echo
+      const id = requestId;
+      setTimeout(() => {
+        pendingStatusUpdateIdsRef.current.delete(id);
+      }, 5000);
     }
   };
 
@@ -733,8 +863,26 @@ export function AdminPanelRefactored({
 
   const handleEmailCustomer = (customer: Customer) => {
     setSelectedCustomerForEmail(customer);
-    setCustomSignature(customer.customSignature || "");
+    const signature = customer.customSignature || "";
+    setCustomSignature(signature);
+    setEmailSubject(
+      `Hello ${customer.firstName} - Update from ${customer.businessName}`
+    );
+    setEmailBody(`Hi ${customer.firstName},\n\n\n${signature}`);
     setShowCustomerEmailModal(true);
+  };
+
+  const handleSendCustomerEmail = () => {
+    if (!selectedCustomerForEmail) return;
+    const mailto = `mailto:${selectedCustomerForEmail.email}?subject=${encodeURIComponent(
+      emailSubject
+    )}&body=${encodeURIComponent(emailBody)}`;
+    window.open(mailto, "_blank");
+    toast({
+      title: "Email Client Opened",
+      description: "Compose your message in your default email client.",
+    });
+    setShowCustomerEmailModal(false);
   };
 
   const handleAddBusiness = () => {
@@ -774,6 +922,12 @@ export function AdminPanelRefactored({
       ),
     },
     {
+      value: "employees",
+      label: "Employees",
+      hiddenOnMobile: true,
+      content: <EmployeesTab readOnly={isReadOnly} />,
+    },
+    {
       value: "customers",
       label: "Customers",
       content: (
@@ -781,6 +935,7 @@ export function AdminPanelRefactored({
           customers={customers}
           requests={requests}
           loadingCustomers={loadingCustomers}
+          readOnly={isReadOnly}
           onAddCustomer={() => setShowCustomerForm(true)}
           onEditCustomer={handleEditCustomer}
           onCopyLink={copyToClipboard}
@@ -797,25 +952,11 @@ export function AdminPanelRefactored({
         <DriversTab
           drivers={drivers}
           loadingDrivers={loadingDrivers}
+          readOnly={isReadOnly}
           onAddDriver={() => setShowDriverForm(true)}
           onEditDriver={handleEditDriver}
           onDeleteDriver={handleDeleteDriver}
           onCopyLink={copyToClipboard}
-        />
-      ),
-    },
-    {
-      value: "businesses",
-      label: "Businesses",
-      hiddenOnMobile: true,
-      content: (
-        <BusinessesTab
-          businesses={businesses}
-          loadingBusinesses={loadingBusinesses}
-          onAddBusiness={handleAddBusiness}
-          onActivateBusiness={handleActivateBusiness}
-          onSuspendBusiness={handleSuspendBusiness}
-          onCancelBusiness={handleCancelBusiness}
         />
       ),
     },
@@ -826,25 +967,26 @@ export function AdminPanelRefactored({
       content: (
         <ProductionTab
           requests={requests}
+          readOnly={isReadOnly}
           onUpdateProductionStatus={updateProductionStatus}
           onExportReport={exportProductionReport}
           onViewJobDetails={handleViewJobDetails}
         />
       ),
     },
-    {
-      value: "quotes",
-      label: "Quotes",
-      hiddenOnMobile: true,
-      content: (
-        <QuotesTab
-          quoteRequests={quoteRequests}
-          loadingQuoteRequests={loadingQuoteRequests}
-          onViewQuoteDetails={handleViewQuoteDetails}
-          onQuoteReply={handleQuoteReply}
-        />
-      ),
-    },
+    // {
+    //   value: "quotes",
+    //   label: "Quotes",
+    //   hiddenOnMobile: true,
+    //   content: (
+    //     <QuotesTab
+    //       quoteRequests={quoteRequests}
+    //       loadingQuoteRequests={loadingQuoteRequests}
+    //       onViewQuoteDetails={handleViewQuoteDetails}
+    //       onQuoteReply={handleQuoteReply}
+    //     />
+    //   ),
+    // },
     {
       value: "settings",
       label: "Settings",
@@ -852,6 +994,7 @@ export function AdminPanelRefactored({
         <SettingsTab
           customLogo={customLogo || null}
           onLogoChange={onLogoChange || (() => {})}
+          readOnly={isReadOnly}
           onEmailTemplatesClick={() => setShowEmailTemplatesModal(true)}
           onEmailLogsClick={() => setShowEmailLogsModal(true)}
         />
@@ -868,13 +1011,13 @@ export function AdminPanelRefactored({
   });
 
   return (
-    <div className="min-h-screen bg-background safe-area-top safe-area-bottom overscroll-none">
+    <div className="min-h-screen bg-background safe-area-top safe-area-bottom overscroll-none pb-4">
       <div className="max-w-6xl mx-auto mobile-padding">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="space-y-6 sm:space-y-8"
+          className="space-y-6 sm:space-y-8 p-4"
         >
           {/* Header */}
           <AdminHeader
@@ -1249,6 +1392,30 @@ export function AdminPanelRefactored({
 
               <FormField
                 control={driverForm.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-muted-foreground">
+                      Temporary Password
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="Set a password"
+                        {...field}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Optional. If omitted, driver should set their password via
+                      registration link.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={driverForm.control}
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
@@ -1359,6 +1526,30 @@ export function AdminPanelRefactored({
 
               <FormField
                 control={editDriverForm.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-muted-foreground">
+                      Reset Password
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="Leave blank to keep current"
+                        {...field}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Provide a new password to reset. Leave empty to keep the
+                      existing password.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editDriverForm.control}
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
@@ -1428,6 +1619,406 @@ export function AdminPanelRefactored({
         onSubmit={handleBusinessSubmit}
         isLoading={createBusinessMutation.isPending}
       />
+
+      {/* Quote Details Modal */}
+      <Dialog
+        open={showQuoteDetails}
+        onOpenChange={(open) => {
+          setShowQuoteDetails(open);
+          if (!open) {
+            setSelectedQuoteForDetails(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto bg-popover border border-border shadow-sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-foreground mb-2">
+              Quote Details
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedQuoteForDetails && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-muted-foreground">Name</div>
+                  <div className="text-foreground font-medium">
+                    {selectedQuoteForDetails.firstName}{" "}
+                    {selectedQuoteForDetails.lastName}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Business</div>
+                  <div className="text-foreground font-medium">
+                    {selectedQuoteForDetails.businessName}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Email</div>
+                  <div className="text-foreground break-all">
+                    {selectedQuoteForDetails.email}
+                  </div>
+                </div>
+                {selectedQuoteForDetails.phone && (
+                  <div>
+                    <div className="text-muted-foreground">Phone</div>
+                    <div className="text-foreground">
+                      {selectedQuoteForDetails.phone}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <div className="text-muted-foreground">Requested</div>
+                  <div className="text-foreground">
+                    {new Date(
+                      selectedQuoteForDetails.createdAt
+                    ).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              {selectedQuoteForDetails.description && (
+                <div>
+                  <div className="text-muted-foreground mb-1">Description</div>
+                  <div className="text-foreground/90 whitespace-pre-wrap">
+                    {selectedQuoteForDetails.description}
+                  </div>
+                </div>
+              )}
+              {Array.isArray(selectedQuoteForDetails.photos) &&
+                selectedQuoteForDetails.photos.length > 0 && (
+                  <div>
+                    <div className="text-muted-foreground mb-2">Photos</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {selectedQuoteForDetails.photos.map(
+                        (url: string, idx: number) => {
+                          const isBase64Image =
+                            typeof url === "string" &&
+                            url.startsWith("data:image/");
+                          if (!isBase64Image) return null;
+                          return (
+                            <a
+                              key={`${url}-${idx}`}
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block rounded overflow-hidden border border-border"
+                              title={`Photo ${idx + 1}`}
+                            >
+                              <Image
+                                src={url}
+                                alt={`Photo ${idx + 1}`}
+                                width={200}
+                                height={96}
+                                className="w-full h-24 object-cover"
+                              />
+                            </a>
+                          );
+                        }
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => handleQuoteReply(selectedQuoteForDetails)}
+                >
+                  Reply
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowQuoteDetails(false);
+                    setSelectedQuoteForDetails(null);
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Customer Email Modal */}
+      <Dialog
+        open={showCustomerEmailModal}
+        onOpenChange={(open) => {
+          setShowCustomerEmailModal(open);
+          if (!open) {
+            setSelectedCustomerForEmail(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg w-full max-h-[90vh] overflow-y-auto bg-popover border border-border shadow-sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-foreground mb-2">
+              Email Customer
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label className="text-muted-foreground">To</Label>
+              <Input value={selectedCustomerForEmail?.email || ""} disabled />
+            </div>
+            <div>
+              <Label>Subject</Label>
+              <Input
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                placeholder="Subject"
+              />
+            </div>
+            <div>
+              <Label className="text-muted-foreground">Message</Label>
+              <Textarea
+                value={emailBody}
+                onChange={(e) => setEmailBody(e.target.value)}
+                rows={8}
+                className="resize-none"
+                placeholder="Write your message..."
+              />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <Button
+                type="button"
+                onClick={handleSendCustomerEmail}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                Open in Email Client
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowCustomerEmailModal(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Templates Modal */}
+      <Dialog
+        open={showEmailTemplatesModal}
+        onOpenChange={setShowEmailTemplatesModal}
+      >
+        <DialogContent className="max-w-3xl w-full max-h-[90vh] overflow-y-auto bg-popover border border-border shadow-sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-foreground mb-2">
+              Manage Email Templates
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="border rounded-md p-3">
+              <h4 className="font-medium mb-2">Create Template</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label>Type</Label>
+                  <Select
+                    value={newTemplate.templateType}
+                    onValueChange={(value) =>
+                      setNewTemplate((t) => ({
+                        ...t,
+                        templateType: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a template type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">pending</SelectItem>
+                      <SelectItem value="in_process">in_process</SelectItem>
+                      <SelectItem value="ready_for_delivery">
+                        ready_for_delivery
+                      </SelectItem>
+                      <SelectItem value="ready_to_bill">
+                        ready_to_bill
+                      </SelectItem>
+                      <SelectItem value="billed">billed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Subject</Label>
+                  <Input
+                    placeholder="Subject"
+                    value={newTemplate.subject}
+                    onChange={(e) =>
+                      setNewTemplate((t) => ({ ...t, subject: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label>Body</Label>
+                  <Textarea
+                    className="w-full border rounded-md p-2 bg-background min-h-[120px]"
+                    value={newTemplate.bodyTemplate}
+                    onChange={(e) =>
+                      setNewTemplate((t) => ({
+                        ...t,
+                        bodyTemplate: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="tmpl-active"
+                    checked={newTemplate.isActive}
+                    onCheckedChange={(checked) =>
+                      setNewTemplate((t) => ({
+                        ...t,
+                        isActive: checked === true,
+                      }))
+                    }
+                  />
+                  <Label htmlFor="tmpl-active">Active</Label>
+                </div>
+                <div className="sm:col-span-2 text-right">
+                  <Button
+                    size="sm"
+                    onClick={() => createTemplateMutation.mutate(newTemplate)}
+                    disabled={!newTemplate.subject || !newTemplate.bodyTemplate}
+                  >
+                    Save Template
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="border rounded-md p-3">
+              <h4 className="font-medium mb-2">Existing Templates</h4>
+              <div className="space-y-3">
+                {loadingEmailTemplates ? (
+                  <div>Loading templates…</div>
+                ) : (
+                  ((emailTemplatesData as any)?.templates || []).map(
+                    (tpl: any) => (
+                      <div key={tpl.id} className="border rounded p-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-sm text-muted-foreground">
+                              Type
+                            </label>
+                            <input
+                              className="w-full border rounded-md p-2 bg-muted"
+                              value={tpl.templateType}
+                              disabled
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm text-muted-foreground">
+                              Subject
+                            </label>
+                            <input
+                              className="w-full border rounded-md p-2 bg-background"
+                              defaultValue={tpl.subject}
+                              onBlur={(e) =>
+                                updateTemplateMutation.mutate({
+                                  id: tpl.id,
+                                  subject: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="text-sm text-muted-foreground">
+                              Body
+                            </label>
+                            <textarea
+                              className="w-full border rounded-md p-2 bg-background min-h-[120px]"
+                              defaultValue={tpl.bodyTemplate}
+                              onBlur={(e) =>
+                                updateTemplateMutation.mutate({
+                                  id: tpl.id,
+                                  bodyTemplate: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              id={`active-${tpl.id}`}
+                              type="checkbox"
+                              defaultChecked={tpl.isActive}
+                              onChange={(e) =>
+                                updateTemplateMutation.mutate({
+                                  id: tpl.id,
+                                  isActive: e.target.checked,
+                                })
+                              }
+                            />
+                            <label
+                              htmlFor={`active-${tpl.id}`}
+                              className="text-sm"
+                            >
+                              Active
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Logs Modal */}
+      <Dialog open={showEmailLogsModal} onOpenChange={setShowEmailLogsModal}>
+        <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto bg-popover border border-border shadow-sm">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-foreground mb-2">
+              Email Logs
+            </DialogTitle>
+          </DialogHeader>
+          <div className="overflow-auto">
+            {loadingEmailLogs ? (
+              <div className="p-4">Loading logs…</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b border-border">
+                    <th className="p-2">Sent At</th>
+                    <th className="p-2">Template</th>
+                    <th className="p-2">Recipient</th>
+                    <th className="p-2">Subject</th>
+                    <th className="p-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {((emailLogsData as any)?.logs || []).map((log: any) => (
+                    <tr key={log.id} className="border-b border-border">
+                      <td className="p-2 whitespace-nowrap">
+                        {new Date(log.sentAt || log.sent_at).toLocaleString()}
+                      </td>
+                      <td className="p-2 whitespace-nowrap">
+                        {log.templateType || log.template_type}
+                      </td>
+                      <td className="p-2 whitespace-nowrap">
+                        {log.recipientEmail || log.recipient_email}
+                      </td>
+                      <td className="p-2">{log.subject}</td>
+                      <td className="p-2 whitespace-nowrap">{log.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Welcome Animation */}
       {showWelcome && (

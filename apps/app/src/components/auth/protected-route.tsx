@@ -1,7 +1,7 @@
 "use client";
 import { Loader2 } from "lucide-react";
-import { redirect } from "next/navigation";
-import React from "react";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useMemo } from "react";
 import { useRequireAuth, useRequireRole } from "../../lib/auth";
 
 interface ProtectedRouteProps {
@@ -16,8 +16,31 @@ export function ProtectedRoute({
   requiredRoles,
   fallback,
 }: ProtectedRouteProps) {
+  const router = useRouter();
   const requireAuth = useRequireAuth();
   const requireRole = useRequireRole(requiredRoles || []);
+
+  // Determine if we should redirect and to where
+  const redirectPath = useMemo(() => {
+    console.log("requiredRoles", requiredRoles);
+    const roleParam = requiredRoles?.[0];
+    const base = "/auth";
+    return roleParam ? `${base}?role=${roleParam}` : base;
+  }, [requiredRoles]);
+
+  const shouldRedirect = useMemo(() => {
+    if (requireAuth.requireAuth) return true;
+    if (requiredRoles && requiredRoles.length > 0 && requireRole.requireRole)
+      return true;
+    return false;
+  }, [requireAuth.requireAuth, requiredRoles, requireRole.requireRole]);
+
+  useEffect(() => {
+    if (shouldRedirect) {
+      // Use replace to prevent adding a back entry to a protected page
+      router.replace(redirectPath);
+    }
+  }, [shouldRedirect, router, redirectPath]);
 
   // Show loading state
   if (requireAuth.isLoading || (requireRole && requireRole.isLoading)) {
@@ -31,22 +54,17 @@ export function ProtectedRoute({
     );
   }
 
-  // Check if authentication is required
-  if (requireAuth.requireAuth) {
-    if (fallback) {
-      return <>{fallback}</>;
-    }
-
-    redirect(`/auth?role=${requiredRoles?.[0]}`);
-  }
-
-  // Check if role is required
-  if (requiredRoles && requiredRoles.length > 0 && requireRole.requireRole) {
-    if (fallback) {
-      return <>{fallback}</>;
-    }
-
-    redirect(`/auth?role=${requiredRoles?.[0]}`);
+  if (shouldRedirect) {
+    return fallback ? (
+      <>{fallback}</>
+    ) : (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Redirecting…</p>
+        </div>
+      </div>
+    );
   }
 
   // User is authenticated and has required role (if any)
@@ -62,7 +80,24 @@ export function BusinessProtectedRoute({
   fallback?: React.ReactNode;
 }) {
   return (
-    <ProtectedRoute requiredRoles={["business_owner"]} fallback={fallback}>
+    <ProtectedRoute
+      requiredRoles={["business_owner", "employee_viewer"]}
+      fallback={fallback}
+    >
+      {children}
+    </ProtectedRoute>
+  );
+}
+
+export function EmployeeProtectedRoute({
+  children,
+  fallback,
+}: {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}) {
+  return (
+    <ProtectedRoute requiredRoles={["employee_viewer"]} fallback={fallback}>
       {children}
     </ProtectedRoute>
   );

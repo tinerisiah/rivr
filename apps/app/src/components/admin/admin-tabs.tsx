@@ -18,12 +18,12 @@ interface AdminTabsProps {
 export function AdminTabs({ tabs, defaultValue = "overview" }: AdminTabsProps) {
   return (
     <Tabs defaultValue={defaultValue} className="w-full">
-      <TabsList className="grid w-full grid-cols-3 sm:grid-cols-8 bg-card border border-border mobile-button shadow-sm">
+      <TabsList className="flex justify-between w-full bg-card border border-border mobile-button shadow-sm">
         {tabs.map((tab) => (
           <TabsTrigger
             key={tab.value}
             value={tab.value}
-            className={`text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground mobile-caption tap-highlight-none ${
+            className={`text-muted-foreground w-full data-[state=active]:bg-primary data-[state=active]:text-primary-foreground mobile-caption tap-highlight-none ${
               tab.hiddenOnMobile ? "hidden sm:flex" : ""
             }`}
           >

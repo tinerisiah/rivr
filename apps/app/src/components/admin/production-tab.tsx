@@ -1,23 +1,25 @@
 "use client";
-import { useState } from "react";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import type { PickupRequest } from "@/lib/schema";
 import {
-  Clock,
-  TrendingUp,
   AlertTriangle,
   BarChart3,
+  CalendarDays,
+  Clock,
+  Eye,
   FileText,
   Search,
-  CalendarDays,
-  Eye,
+  TrendingUp,
 } from "lucide-react";
-import type { PickupRequest } from "@/lib/schema";
+import { useState } from "react";
+import { ProductionViewDialog } from "./production-view-dialog";
 
 interface ProductionTabProps {
   requests: PickupRequest[];
+  readOnly?: boolean;
   onUpdateProductionStatus: (requestId: number, status: string) => void;
   onExportReport: () => void;
   onViewJobDetails: (request: PickupRequest) => void;
@@ -25,6 +27,7 @@ interface ProductionTabProps {
 
 export function ProductionTab({
   requests,
+  readOnly = false,
   onUpdateProductionStatus,
   onExportReport,
   onViewJobDetails,
@@ -33,6 +36,10 @@ export function ProductionTab({
   const [reportSearchTerm, setReportSearchTerm] = useState("");
   const [dateRangeStart, setDateRangeStart] = useState("");
   const [dateRangeEnd, setDateRangeEnd] = useState("");
+  const [selectedRequest, setSelectedRequest] = useState<PickupRequest | null>(
+    null
+  );
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // Production Management Functions
   const calculateAverageProcessingTime = () => {
@@ -116,6 +123,31 @@ export function ProductionTab({
     return Math.round((withinSLA.length / recentRequests.length) * 100);
   };
 
+  // Dialog management functions
+  const handleOpenDialog = (request: PickupRequest) => {
+    setSelectedRequest(request);
+    setIsDialogOpen(true);
+  };
+
+  const handleCloseDialog = () => {
+    setIsDialogOpen(false);
+    setSelectedRequest(null);
+  };
+
+  const handleUpdateStatus = async (requestId: number, status: string) => {
+    await onUpdateProductionStatus(requestId, status);
+    // Refresh the selected request data
+    const updatedRequest = requests.find((r) => r.id === requestId);
+    if (updatedRequest) {
+      setSelectedRequest(updatedRequest);
+    }
+  };
+
+  // Handle view job details from the detailed report
+  const handleViewJobDetails = (request: PickupRequest) => {
+    handleOpenDialog(request);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Controls */}
@@ -129,7 +161,7 @@ export function ProductionTab({
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 items-center">
           {/* Time Filter */}
           <div className="flex items-center space-x-2 bg-muted rounded-lg p-1 border border-border">
             <Button
@@ -157,14 +189,16 @@ export function ProductionTab({
           </div>
 
           {/* Export Button */}
-          <Button
-            onClick={onExportReport}
-            size="sm"
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1"
-          >
-            <FileText className="w-3 h-3 mr-2" />
-            Export Report
-          </Button>
+          {!readOnly && (
+            <Button
+              onClick={onExportReport}
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1"
+            >
+              <FileText className="w-3 h-3 mr-2" />
+              Export Report
+            </Button>
+          )}
         </div>
       </div>
 
@@ -234,7 +268,7 @@ export function ProductionTab({
       {/* Five Column Production Workflow */}
       <div className="grid grid-cols-1 xl:grid-cols-5 lg:grid-cols-3 md:grid-cols-2 gap-4 mb-6">
         {/* Column 1: Requests for Pickup */}
-        <Card className="bg-red-50 border border-red-200 p-4 shadow-sm">
+        <Card className="bg-card border border-border p-4 shadow-sm">
           <h3 className="text-lg font-bold text-red-700 mb-4 text-center">
             Requests for Pickup
           </h3>
@@ -256,7 +290,8 @@ export function ProductionTab({
               .map((request: PickupRequest) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-3 border border-red-200 hover:bg-red-50 transition-colors shadow-sm"
+                  className="bg-card rounded-lg p-3 border border-border hover:bg-muted transition-colors shadow-sm cursor-pointer"
+                  onClick={() => handleOpenDialog(request)}
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start">
@@ -271,16 +306,19 @@ export function ProductionTab({
                           {request.address}
                         </p>
                       </div>
+                    </div>
+                    {!readOnly && (
                       <Button
-                        onClick={() =>
-                          onUpdateProductionStatus(request.id, "in_process")
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdateProductionStatus(request.id, "in_process");
+                        }}
                         size="sm"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white text-xs px-2 py-1"
+                        className="bg-yellow-500 w-full hover:bg-yellow-600 text-white text-xs px-2 py-1"
                       >
                         Start Process
                       </Button>
-                    </div>
+                    )}
                     <Badge
                       variant="secondary"
                       className="bg-red-100 text-red-700 border-red-300 w-full justify-center"
@@ -294,7 +332,7 @@ export function ProductionTab({
         </Card>
 
         {/* Column 2: In Process */}
-        <Card className="bg-yellow-50 border border-yellow-200 p-4 shadow-sm">
+        <Card className="bg-card border border-border p-4 shadow-sm">
           <h3 className="text-lg font-bold text-yellow-700 mb-4 text-center">
             In Process
           </h3>
@@ -314,7 +352,8 @@ export function ProductionTab({
               .map((request: PickupRequest) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-3 border border-yellow-200 hover:bg-yellow-50 transition-colors shadow-sm"
+                  className="bg-card rounded-lg p-3 border border-border hover:bg-muted transition-colors shadow-sm cursor-pointer"
+                  onClick={() => handleOpenDialog(request)}
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start">
@@ -329,19 +368,22 @@ export function ProductionTab({
                           RO# {request.roNumber || "N/A"}
                         </p>
                       </div>
+                    </div>
+                    {!readOnly && (
                       <Button
-                        onClick={() =>
+                        onClick={(e) => {
+                          e.stopPropagation();
                           onUpdateProductionStatus(
                             request.id,
                             "ready_for_delivery"
-                          )
-                        }
+                          );
+                        }}
                         size="sm"
-                        className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-1"
+                        className="bg-orange-500 w-full hover:bg-orange-600 text-white text-xs px-2 py-1"
                       >
                         Mark Ready
                       </Button>
-                    </div>
+                    )}
                     <Badge
                       variant="secondary"
                       className="bg-yellow-100 text-yellow-700 border-yellow-300 w-full justify-center"
@@ -355,7 +397,7 @@ export function ProductionTab({
         </Card>
 
         {/* Column 3: Ready to Deliver */}
-        <Card className="bg-orange-50 border border-orange-200 p-4 shadow-sm">
+        <Card className="bg-card border border-border p-4 shadow-sm">
           <h3 className="text-lg font-bold text-orange-700 mb-4 text-center">
             Ready to Deliver
           </h3>
@@ -375,7 +417,8 @@ export function ProductionTab({
               .map((request: PickupRequest) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-3 border border-orange-200 hover:bg-orange-50 transition-colors shadow-sm"
+                  className="bg-card rounded-lg p-3 border border-border hover:bg-muted transition-colors shadow-sm cursor-pointer"
+                  onClick={() => handleOpenDialog(request)}
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start">
@@ -390,16 +433,19 @@ export function ProductionTab({
                           RO# {request.roNumber || "N/A"}
                         </p>
                       </div>
+                    </div>
+                    {!readOnly && (
                       <Button
-                        onClick={() =>
-                          onUpdateProductionStatus(request.id, "ready_to_bill")
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdateProductionStatus(request.id, "ready_to_bill");
+                        }}
                         size="sm"
-                        className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-2 py-1"
+                        className="bg-orange-700 w-full hover:bg-orange-900 text-white text-xs px-2 py-1"
                       >
                         Mark Delivered
                       </Button>
-                    </div>
+                    )}
                     <Badge
                       variant="secondary"
                       className="bg-orange-100 text-orange-700 border-orange-300 w-full justify-center"
@@ -413,7 +459,7 @@ export function ProductionTab({
         </Card>
 
         {/* Column 4: Ready to Bill */}
-        <Card className="bg-blue-50 border border-blue-200 p-4 shadow-sm">
+        <Card className="bg-card border border-border p-4 shadow-sm">
           <h3 className="text-lg font-bold text-blue-700 mb-4 text-center">
             Ready to Bill
           </h3>
@@ -433,7 +479,8 @@ export function ProductionTab({
               .map((request: PickupRequest) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-3 border border-blue-200 hover:bg-blue-50 transition-colors shadow-sm"
+                  className="bg-card rounded-lg p-3 border border-border hover:bg-muted transition-colors shadow-sm cursor-pointer"
+                  onClick={() => handleOpenDialog(request)}
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start">
@@ -448,16 +495,19 @@ export function ProductionTab({
                           RO# {request.roNumber || "N/A"}
                         </p>
                       </div>
+                    </div>
+                    {!readOnly && (
                       <Button
-                        onClick={() =>
-                          onUpdateProductionStatus(request.id, "billed")
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdateProductionStatus(request.id, "billed");
+                        }}
                         size="sm"
-                        className="bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-1"
+                        className="bg-blue-500 w-full hover:bg-blue-600 text-white text-xs px-2 py-1"
                       >
                         Mark Billed
                       </Button>
-                    </div>
+                    )}
                     <Badge
                       variant="secondary"
                       className="bg-blue-100 text-blue-700 border-blue-300 w-full justify-center"
@@ -471,7 +521,7 @@ export function ProductionTab({
         </Card>
 
         {/* Column 5: Billed/Completed */}
-        <Card className="bg-green-50 border border-green-200 p-4 shadow-sm">
+        <Card className="bg-card border border-border p-4 shadow-sm">
           <h3 className="text-lg font-bold text-green-700 mb-4 text-center">
             Billed/Completed
           </h3>
@@ -491,7 +541,8 @@ export function ProductionTab({
               .map((request: PickupRequest) => (
                 <div
                   key={request.id}
-                  className="bg-white rounded-lg p-3 border border-green-200 shadow-sm"
+                  className="bg-card rounded-lg p-3 border border-border shadow-sm cursor-pointer hover:bg-muted transition-colors"
+                  onClick={() => handleOpenDialog(request)}
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-start">
@@ -686,7 +737,7 @@ export function ProductionTab({
                     <tr
                       key={request.id}
                       className="border-b border-border hover:bg-muted cursor-pointer"
-                      onClick={() => onViewJobDetails(request)}
+                      onClick={() => handleViewJobDetails(request)}
                     >
                       <td className="py-3 px-2 text-foreground">
                         {request.firstName} {request.lastName}
@@ -710,7 +761,7 @@ export function ProductionTab({
                           }`}
                         >
                           {(request.productionStatus || "pending")
-                            .replace("_", " ")
+                            .replace(/_/g, " ")
                             .toUpperCase()}
                         </Badge>
                       </td>
@@ -727,7 +778,7 @@ export function ProductionTab({
                         <Button
                           onClick={(e) => {
                             e.stopPropagation();
-                            onViewJobDetails(request);
+                            handleViewJobDetails(request);
                           }}
                           variant="outline"
                           size="sm"
@@ -794,6 +845,15 @@ export function ProductionTab({
           </div>
         </div>
       </Card>
+
+      {/* Production View Dialog */}
+      <ProductionViewDialog
+        isOpen={isDialogOpen}
+        onClose={handleCloseDialog}
+        request={selectedRequest}
+        onUpdateProductionStatus={handleUpdateStatus}
+        readOnly={readOnly}
+      />
     </div>
   );
 }

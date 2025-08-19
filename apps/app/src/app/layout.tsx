@@ -1,7 +1,6 @@
-import "./styles.css";
-import { Providers } from "./providers";
 import { TenantProvider } from "../lib/tenant-context";
-import { TenantHeader } from "../components/tenant-branding";
+import { Providers } from "./providers";
+import "./styles.css";
 
 export default function RootLayout({
   children,
@@ -12,7 +11,6 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-background">
         <TenantProvider>
-          <TenantHeader />
           <Providers>{children}</Providers>
         </TenantProvider>
       </body>

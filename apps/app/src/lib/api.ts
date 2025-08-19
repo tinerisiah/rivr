@@ -12,7 +12,7 @@ export function buildApiUrl(endpoint: string): string {
 }
 
 // Enhanced API request function with base URL
-export async function apiRequest(
+export async function coreApiRequest(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<Response> {
@@ -52,6 +52,17 @@ export async function apiRequest(
 
     if (tenant && tenant !== "www" && tenant !== "localhost") {
       headers["X-Tenant-Subdomain"] = tenant;
+    }
+    // Forward customer token when present for session-based prefill
+    const customerTokenCookie = (() => {
+      const match = document.cookie
+        .split(";")
+        .map((c) => c.trim())
+        .find((c) => c.startsWith(`customer_token=`));
+      return match ? decodeURIComponent(match.split("=")[1]) : null;
+    })();
+    if (customerTokenCookie) {
+      headers["X-Customer-Token"] = customerTokenCookie;
     }
   }
 
@@ -95,8 +106,87 @@ export async function authenticatedApiRequest(
     ...options,
   };
 
-  const response = await apiRequest(endpoint, config);
+  const response = await coreApiRequest(endpoint, config);
   const data = await response.json();
 
   return data;
+}
+
+// Lightweight wrapper for components expecting Response-style methods
+export async function apiRequest(
+  method: "GET" | "POST" | "PUT" | "DELETE",
+  endpoint: string,
+  body?: any
+) {
+  const resp = await fetch(buildApiUrl(endpoint), {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(typeof window !== "undefined" && localStorage.getItem("accessToken")
+        ? { Authorization: `Bearer ${localStorage.getItem("accessToken")}` }
+        : {}),
+    },
+    credentials: "include",
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!resp.ok) {
+    const text = (await resp.text()) || resp.statusText;
+    throw new Error(`${resp.status}: ${text}`);
+  }
+  return resp;
+}
+
+// Business settings API functions
+export async function getBusinessSettings(): Promise<any> {
+  return authenticatedApiRequest("/api/admin/business-settings");
+}
+
+export async function updateBusinessSettings(settings: {
+  customLogo?: string | null;
+  customBranding?: string | null;
+  emailSettings?: string | null;
+  notificationSettings?: string | null;
+}): Promise<any> {
+  return authenticatedApiRequest("/api/admin/business-settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+}
+
+// Business core info API functions
+export async function getBusinessInfo(): Promise<any> {
+  return authenticatedApiRequest("/api/admin/business-info");
+}
+
+export async function updateBusinessInfo(info: {
+  businessName?: string;
+  phone?: string;
+  address?: string;
+  customDomain?: string;
+}): Promise<any> {
+  return authenticatedApiRequest("/api/admin/business-info", {
+    method: "PUT",
+    body: JSON.stringify(info),
+  });
+}
+
+// Public business settings API function
+export async function getPublicBusinessSettings(
+  subdomain: string
+): Promise<any> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/public/business-settings/${subdomain}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
 }

@@ -143,13 +143,7 @@ export function registerDriverRoutes(app: Express) {
 
         const completionData = driverPickupCompletionSchema.parse(req.body);
 
-        // Update pickup to "in_process" status
-        await storage.updatePickupRequestProductionStatus(
-          pickupId,
-          "in_process"
-        );
-
-        // Update pickup with completion data including RO# and photo
+        // Update pickup with completion data including RO# and photo and set status
         await storage.updatePickupCompletion(pickupId, {
           completionNotes: completionData.notes,
           roNumber: completionData.roNumber || undefined,
@@ -157,6 +151,59 @@ export function registerDriverRoutes(app: Express) {
           isCompleted: true,
           completedAt: new Date(),
         });
+
+        // Mark timeline in_process
+        const updated = await storage.updatePickupRequestProductionStatus(
+          pickupId,
+          "in_process"
+        );
+        // Send email on transition to in_process if template exists
+        try {
+          if (updated) {
+            const template = await storage.getEmailTemplateByType("in_process");
+            if (template && updated.email) {
+              const { renderEmailBodyTemplate, sendEmail } = await import(
+                "../email-utils"
+              );
+              const html = renderEmailBodyTemplate(template.bodyTemplate, {
+                firstName: updated.firstName,
+                lastName: updated.lastName,
+                businessName: updated.businessName,
+                address: updated.address,
+                roNumber: (updated as any).roNumber,
+                productionStatus: updated.productionStatus,
+              });
+              const subject = template.subject;
+              const sentBy = req.user?.email || "system@rivr.app";
+              const sendResult = await sendEmail({
+                to: updated.email,
+                subject,
+                html,
+              });
+              await storage.createEmailLog({
+                customerId: updated.customerId,
+                pickupRequestId: updated.id,
+                templateType: "in_process",
+                recipientEmail: updated.email,
+                subject,
+                sentBy,
+                status: sendResult.success ? "sent" : "failed",
+                errorMessage: sendResult.success ? undefined : sendResult.error,
+              } as any);
+            }
+          }
+        } catch (e) {
+          // Non-blocking
+        }
+
+        // Broadcast production status update to tenant room (admins/drivers)
+        const tenantId = (req as any).businessId as number | undefined;
+        if (tenantId) {
+          broadcastToDrivers(tenantId, {
+            type: "PRODUCTION_STATUS_UPDATED",
+            data: { id: pickupId, productionStatus: "in_process" },
+          });
+        }
 
         res.json({
           success: true,
@@ -191,13 +238,70 @@ export function registerDriverRoutes(app: Express) {
       try {
         const storage = getStorage(req);
         const deliveryId = parseInt(req.params.id);
-        const { photo, notes } = req.body;
+        const { photo, notes } = req.body as { photo?: string; notes?: string };
 
-        // Update delivery to "ready_to_bill" status
-        await storage.updatePickupRequestProductionStatus(
+        // Persist delivery photo/notes and mark deliveredAt
+        const delivered = await storage.deliverPickupRequest(deliveryId, {
+          deliveryNotes: notes,
+          deliveryQrCodes: [],
+          deliveryPhoto: photo,
+        });
+
+        // Update delivery to "ready_to_bill" status and timeline
+        const updated = await storage.updatePickupRequestProductionStatus(
           deliveryId,
           "ready_to_bill"
         );
+
+        // Email on ready_to_bill
+        try {
+          const record = updated || delivered;
+          if (record) {
+            const template =
+              await storage.getEmailTemplateByType("ready_to_bill");
+            if (template && record.email) {
+              const { renderEmailBodyTemplate, sendEmail } = await import(
+                "../email-utils"
+              );
+              const html = renderEmailBodyTemplate(template.bodyTemplate, {
+                firstName: record.firstName,
+                lastName: record.lastName,
+                businessName: record.businessName,
+                address: record.address,
+                roNumber: (record as any).roNumber,
+                productionStatus: "ready_to_bill",
+              });
+              const subject = template.subject;
+              const sentBy = req.user?.email || "system@rivr.app";
+              const sendResult = await sendEmail({
+                to: record.email,
+                subject,
+                html,
+              });
+              await storage.createEmailLog({
+                customerId: record.customerId,
+                pickupRequestId: record.id,
+                templateType: "ready_to_bill",
+                recipientEmail: record.email,
+                subject,
+                sentBy,
+                status: sendResult.success ? "sent" : "failed",
+                errorMessage: sendResult.success ? undefined : sendResult.error,
+              } as any);
+            }
+          }
+        } catch (e) {
+          // Non-blocking
+        }
+
+        // Broadcast production status update to tenant room (admins/drivers)
+        const tenantId = (req as any).businessId as number | undefined;
+        if (tenantId) {
+          broadcastToDrivers(tenantId, {
+            type: "PRODUCTION_STATUS_UPDATED",
+            data: { id: deliveryId, productionStatus: "ready_to_bill" },
+          });
+        }
 
         res.json({
           success: true,

@@ -25,7 +25,7 @@ import { useAuth } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -45,71 +45,55 @@ import {
   Truck,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { API_BASE_URL, buildApiUrl as buildApiUrl2 } from "@/lib/api";
+import { API_BASE_URL } from "@/lib/api";
+import {
+  DeviceDetection,
+  openNativeNavigation,
+  openAppleMapsWithAllPickups,
+} from "@/lib/navigation-utils";
 // Simple navigation utility for driver dashboard
 const openNavigation = (addresses: string[]) => {
-  if (addresses.length === 0) {
+  if (!addresses || addresses.length === 0) {
     return;
   }
 
-  // Detect if on iOS device
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isAndroid = /Android/.test(navigator.userAgent);
+  const points = addresses.map((addr) => ({
+    lat: 0,
+    lng: 0,
+    address: addr,
+    name: addr,
+  }));
 
-  let url = "";
-
-  if (isIOS) {
-    // Apple Maps for iOS - use proper multi-stop format
-    if (addresses.length === 1) {
-      const address = encodeURIComponent(addresses[0]);
-      url = `maps://maps.apple.com/?daddr=${address}&dirflg=d`;
-    } else {
-      // For multiple addresses, create a route with all stops
-      // Apple Maps supports multiple destinations in the query parameter
-      const encodedAddresses = addresses.map((addr) =>
-        encodeURIComponent(addr)
-      );
-      // Use saddr for starting location (current location) and daddr for destinations
-      url = `maps://maps.apple.com/?saddr=Current+Location&daddr=${encodedAddresses.join("+to:")}&dirflg=d`;
-    }
-  } else {
-    // Fallback to Google Maps for non-iOS devices
-    if (addresses.length === 1) {
-      const address = encodeURIComponent(addresses[0]);
-      url = `https://www.google.com/maps/dir/current+location/${address}`;
-    } else {
-      // Multiple addresses for Google Maps
-      const waypoints = addresses
-        .map((addr) => encodeURIComponent(addr))
-        .join("/");
-      url = `https://www.google.com/maps/dir/current+location/${waypoints}`;
-    }
-  }
-
-  // For iOS devices, we want to ensure Apple Maps opens directly
-  // Use location.href for custom scheme URLs to avoid popup blockers
   try {
-    if (isIOS && url.startsWith("maps://")) {
-      // For Apple Maps URLs, use direct location assignment
-      window.location.href = url;
-    } else {
-      // For web URLs, try window.open first, then fallback
-      const newWindow = window.open(url, "_blank");
-      if (!newWindow) {
-        // Fallback to location assignment if popup blocked
-        window.location.href = url;
-      }
+    if (points.length === 1) {
+      openNativeNavigation({
+        destination: points[0],
+        travelMode: "driving",
+      });
+      return;
     }
-  } catch (error) {
-    // Navigation failed - silently ignore
-    // Final fallback: create a temporary link and click it
-    const link = document.createElement("a");
-    link.href = url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+
+    if (DeviceDetection.isIOS() || DeviceDetection.isMacOS()) {
+      // Prefer Apple Maps with multiple stops on iOS
+      openAppleMapsWithAllPickups(null, points);
+    } else {
+      // Use destination + waypoints for Android/Web
+      const destination = points[points.length - 1];
+      const waypoints = points.slice(0, -1);
+      openNativeNavigation({
+        destination,
+        waypoints,
+        travelMode: "driving",
+      });
+    }
+  } catch {
+    // Fallback to Google Maps web with destination only
+    const dest = encodeURIComponent(addresses[addresses.length - 1]);
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving&dir_action=navigate`;
+    const newWindow = window.open(url, "_blank");
+    if (!newWindow) {
+      window.location.href = url;
+    }
   }
 };
 
@@ -140,7 +124,7 @@ const pickupCompletionSchema = z.object({
 });
 
 const deliveryCompletionSchema = z.object({
-  photo: z.instanceof(File).optional(),
+  photo: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -161,15 +145,24 @@ export function DriverDashboard() {
   // Welcome animation
   const { showWelcome, completeWelcome } = useWelcomeAnimation();
 
+  // Guards to avoid re-running auth sync and route restore on every render
+  const didAuthSyncRef = useRef(false);
+  const didRestoreRef = useRef(false);
+
   // Check if user is authenticated through main auth system
   useEffect(() => {
-    if (isMainAuth && user && user.role === "driver") {
-      // User is authenticated through main auth system
-      setIsAuthenticated(true);
-      // Use user ID as driver ID
-      setDriverId(user.id.toString());
+    if (!isMainAuth || !user || user.role !== "driver") return;
 
-      // Check for saved route when driver logs back in
+    // Sync auth state only once per session
+    if (!didAuthSyncRef.current) {
+      didAuthSyncRef.current = true;
+      setIsAuthenticated(true);
+      setDriverId(user.id.toString());
+    }
+
+    // Restore route only once after auth
+    if (!didRestoreRef.current) {
+      didRestoreRef.current = true;
       const savedRoute = localStorage.getItem("activeRoute");
       if (savedRoute) {
         try {
@@ -183,111 +176,15 @@ export function DriverDashboard() {
                 "Your previous route has been restored. Continue completing tasks.",
             });
           }
-        } catch (error) {
-          // Error restoring route - continue without saved route
+        } catch {
           localStorage.removeItem("activeRoute");
         }
       }
     }
   }, [isMainAuth, user, toast]);
 
-  // WS: heartbeat and reconnect
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    let ws: WebSocket | null = null;
-    let heartbeat: number | null = null;
-    let reconnectTimer: number | null = null;
-
-    const connect = () => {
-      try {
-        const token = localStorage.getItem("accessToken");
-        if (!token) return;
-        const url = new URL(API_BASE_URL);
-        const wsScheme = url.protocol === "https:" ? "wss" : "ws";
-        const wsUrl = `${wsScheme}://${url.host}/ws?token=${encodeURIComponent(
-          token
-        )}`;
-        ws = new WebSocket(wsUrl);
-        ws.onopen = () => {
-          // start heartbeat
-          heartbeat = window.setInterval(() => {
-            try {
-              ws?.send(JSON.stringify({ type: "ping", t: Date.now() }));
-            } catch {}
-          }, 15000);
-        };
-        ws.onmessage = (ev) => {
-          try {
-            const msg = JSON.parse(ev.data);
-            if (msg?.type === "NEW_PICKUP_REQUEST") {
-              // Refresh available tasks list on new requests
-              refetch();
-              toast({
-                title: "New pickup assigned",
-                description: msg?.data?.businessName || "",
-              });
-            } else if (msg?.type === "DRIVER_MESSAGE" && msg?.data?.id) {
-              const message = msg.data as { id: number; message?: string };
-              // Mark delivered immediately
-              fetch(
-                buildApiUrl(`/api/driver/messages/${message.id}/delivered`),
-                {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                }
-              ).catch(() => {});
-
-              toast({
-                title: "New message",
-                description: message.message || "",
-              });
-
-              // Auto-mark as read after a short delay (acts as seen)
-              window.setTimeout(() => {
-                fetch(buildApiUrl(`/api/driver/messages/${message.id}/read`), {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                }).catch(() => {});
-              }, 3000);
-            }
-          } catch {}
-        };
-        ws.onclose = () => {
-          if (heartbeat) window.clearInterval(heartbeat);
-          heartbeat = null;
-          // attempt reconnect
-          reconnectTimer = window.setTimeout(connect, 3000) as any;
-        };
-        ws.onerror = () => {
-          try {
-            ws?.close();
-          } catch {}
-        };
-      } catch {}
-    };
-
-    connect();
-    return () => {
-      if (heartbeat) window.clearInterval(heartbeat);
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      try {
-        ws?.close();
-      } catch {}
-    };
-  }, [isAuthenticated, refetch, toast]);
-
   // PIN authentication removed
-  const authMutation = useMutation({
-    mutationFn: async (pin: string) => {
-      throw new Error("PIN auth removed");
-    },
-    onSuccess: () => {},
-    onError: (error) => {
-      console.error("Authentication error:", error);
-    },
-  });
+  // Deprecated PIN auth removed
 
   const handleLogout = async () => {
     try {
@@ -397,8 +294,108 @@ export function DriverDashboard() {
     enabled: !!driverId && isAuthenticated,
   });
 
+  // WS: heartbeat and reconnect
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let ws: WebSocket | null = null;
+    let heartbeat: number | null = null;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) return;
+        const url = new URL(API_BASE_URL);
+        const wsScheme = url.protocol === "https:" ? "wss" : "ws";
+        const wsUrl = `${wsScheme}://${url.host}/ws?token=${encodeURIComponent(
+          token
+        )}`;
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          // start heartbeat
+          heartbeat = window.setInterval(() => {
+            try {
+              ws?.send(JSON.stringify({ type: "ping", t: Date.now() }));
+            } catch {
+              /* noop */
+            }
+          }, 15000);
+        };
+        ws.onmessage = (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (msg?.type === "NEW_PICKUP_REQUEST") {
+              // Refresh available tasks list on new requests
+              refetch();
+              toast({
+                title: "New pickup assigned",
+                description: msg?.data?.businessName || "",
+              });
+            } else if (msg?.type === "DRIVER_MESSAGE" && msg?.data?.id) {
+              const message = msg.data as { id: number; message?: string };
+              // Mark delivered immediately
+              fetch(
+                buildApiUrl(`/api/driver/messages/${message.id}/delivered`),
+                {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                }
+              ).catch(() => {});
+
+              toast({
+                title: "New message",
+                description: message.message || "",
+              });
+
+              // Auto-mark as read after a short delay (acts as seen)
+              window.setTimeout(() => {
+                fetch(buildApiUrl(`/api/driver/messages/${message.id}/read`), {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                }).catch(() => {});
+              }, 3000);
+            }
+          } catch {
+            /* noop */
+          }
+        };
+        ws.onclose = () => {
+          if (heartbeat) window.clearInterval(heartbeat);
+          heartbeat = null;
+          // attempt reconnect
+          reconnectTimer = window.setTimeout(connect, 3000);
+        };
+        ws.onerror = () => {
+          try {
+            ws?.close();
+          } catch {
+            /* noop */
+          }
+        };
+      } catch {
+        /* noop */
+      }
+    };
+
+    connect();
+    return () => {
+      if (heartbeat) window.clearInterval(heartbeat);
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      try {
+        ws?.close();
+      } catch {
+        /* noop */
+      }
+    };
+  }, [isAuthenticated, refetch, toast]);
+
   // Forms for task completion
-  const pickupForm = useForm({
+  type PickupCompletionFormValues = z.infer<typeof pickupCompletionSchema>;
+  type DeliveryCompletionFormValues = z.infer<typeof deliveryCompletionSchema>;
+
+  const pickupForm = useForm<PickupCompletionFormValues>({
     resolver: zodResolver(pickupCompletionSchema),
     defaultValues: {
       roNumber: "",
@@ -408,10 +405,10 @@ export function DriverDashboard() {
     },
   });
 
-  const deliveryForm = useForm({
+  const deliveryForm = useForm<DeliveryCompletionFormValues>({
     resolver: zodResolver(deliveryCompletionSchema),
     defaultValues: {
-      photo: null,
+      photo: "",
       notes: "",
     },
   });
@@ -483,7 +480,7 @@ export function DriverDashboard() {
     setTimeout(() => {
       try {
         openNavigation(addresses);
-      } catch (error) {
+      } catch {
         // Navigation error - provide fallback
         toast({
           title: "Navigation Ready",
@@ -529,7 +526,7 @@ export function DriverDashboard() {
           } else {
             localStorage.setItem("activeRoute", JSON.stringify(routeData));
           }
-        } catch (error) {
+        } catch {
           // Error updating route in localStorage
         }
       }
@@ -603,6 +600,8 @@ export function DriverDashboard() {
     );
   }
 
+  console.log("user", user);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -614,7 +613,7 @@ export function DriverDashboard() {
               <h1 className="text-2xl font-bold text-foreground">
                 Driver Dashboard
               </h1>
-              <p className="text-muted-foreground">Driver ID: {driverId}</p>
+              <p className="text-muted-foreground">Welcome, {user?.name}</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -829,8 +828,8 @@ export function DriverDashboard() {
               <Card className="p-8 text-center">
                 <Route className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-muted-foreground">
-                  No tasks in route. Select tasks from "Available Tasks" to get
-                  started.
+                  No tasks in route. Select tasks from &quot;Available
+                  Tasks&quot; to get started.
                 </p>
               </Card>
             ) : (
@@ -939,7 +938,7 @@ export function DriverDashboard() {
                                     JSON.stringify(routeData)
                                   );
                                 }
-                              } catch (error) {
+                              } catch {
                                 // Error updating route in localStorage
                               }
                             }
@@ -953,7 +952,7 @@ export function DriverDashboard() {
                           }}
                           variant="outline"
                           size="sm"
-                          className="text-red-600 hover:text-red-700 border-red-300 hover:border-red-500 dark:text-red-400 dark:border-red-700 dark:hover:text-red-300 dark:hover:border-red-600"
+                          className="text-red-600 hover:text-red-700 border-red-300 hover:border-red-500 dark:text-red-800 dark:border-red-700 dark:hover:text-white dark:hover:border-red-800"
                         >
                           Cancel
                         </Button>
@@ -1124,7 +1123,18 @@ export function DriverDashboard() {
                         <Input
                           type="file"
                           accept="image/*"
-                          onChange={(e) => field.onChange(e.target.files?.[0])}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                field.onChange(reader.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            } else {
+                              field.onChange("");
+                            }
+                          }}
                         />
                       </FormControl>
                     </FormItem>

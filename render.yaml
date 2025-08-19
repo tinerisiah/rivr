@@ -17,7 +17,7 @@ services:
       - key: NODE_ENV
         value: development
       - key: BASE_DOMAIN
-        value: rivr-api-dev.onrender.com
+        value: dev.rivr-workflow.com
       - key: JWT_SECRET
         sync: false
       - key: DATABASE_URL
@@ -63,7 +63,7 @@ services:
       - key: NODE_ENV
         value: development
       - key: NEXT_PUBLIC_BASE_DOMAIN
-        value: rivr-api-dev.onrender.com
+        value: dev.rivr-workflow.com
       - key: NEXT_PUBLIC_API_BASE_URL
         value: https://rivr-api-dev.onrender.com
       - key: NEXT_PUBLIC_WS_URL

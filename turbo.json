@@ -1,6 +1,12 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "DATABASE_URL",
+    "MAILTRAP_TOKEN",
+    "MAILTRAP_FROM_EMAIL",
+    "MAILTRAP_FROM_NAME"
+  ],
   "tasks": {
     "build": {
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
