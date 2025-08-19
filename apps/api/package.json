@@ -13,7 +13,8 @@
     "db:push": "drizzle-kit push",
     "seed": "tsx scripts/seed.ts",
     "seed:auth": "tsx scripts/seed.ts auth",
-    "seed:full": "tsx scripts/seed.ts"
+    "seed:full": "tsx scripts/seed.ts",
+    "seed:admins": "tsx scripts/seed-admins.ts"
   },
   "jest": {
     "preset": "@repo/jest-presets/node"

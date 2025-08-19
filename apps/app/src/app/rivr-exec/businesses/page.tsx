@@ -28,7 +28,7 @@ export default function RivrExecBusinessesPage() {
       businessId: number;
       status: string;
     }) => {
-      const response = await apiRequest(
+      const response = await authenticatedApiRequest(
         `/api/admin/businesses/${businessId}/status`,
         {
           method: "PUT",
@@ -56,7 +56,7 @@ export default function RivrExecBusinessesPage() {
 
   const createBusinessMutation = useMutation({
     mutationFn: async (businessData: any) => {
-      const response = await apiRequest("/api/admin/businesses", {
+      const response = await authenticatedApiRequest("/api/admin/businesses", {
         method: "POST",
         body: JSON.stringify(businessData),
       });
