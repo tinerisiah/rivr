@@ -732,6 +732,17 @@ export function registerAdminRoutes(app: Express) {
         const businessData = insertBusinessSchema.parse(payload);
         const business = await storage.createBusiness(businessData);
 
+        // Provision tenant schema immediately for the newly created business
+        try {
+          await provisionTenantSchema(business.databaseSchema);
+        } catch (e) {
+          log("warn", "Tenant schema provisioning failed after admin create", {
+            error: e instanceof Error ? e.message : String(e),
+            schema: (business as any).databaseSchema,
+            businessId: (business as any).id,
+          });
+        }
+
         res.json({
           success: true,
           business,
