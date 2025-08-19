@@ -30,7 +30,7 @@ import WelcomeAnimation, {
   useWelcomeAnimation,
 } from "@/components/welcome-animation";
 import { useToast } from "@/hooks/use-toast";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, authenticatedApiRequest } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type {
@@ -524,12 +524,14 @@ export function AdminPanelRefactored({
       businessId: number;
       status: string;
     }) => {
-      const response = await apiRequest(
-        "PUT",
+      const data = await authenticatedApiRequest(
         `/api/admin/businesses/${businessId}/status`,
-        { status }
+        {
+          method: "PUT",
+          body: JSON.stringify({ status }),
+        }
       );
-      return response.json();
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
@@ -550,12 +552,11 @@ export function AdminPanelRefactored({
 
   const createBusinessMutation = useMutation({
     mutationFn: async (businessData: any) => {
-      const response = await apiRequest(
-        "POST",
-        "/api/admin/businesses",
-        businessData
-      );
-      return response.json();
+      const data = await authenticatedApiRequest("/api/admin/businesses", {
+        method: "POST",
+        body: JSON.stringify(businessData),
+      });
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });

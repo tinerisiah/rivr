@@ -11,7 +11,8 @@ if (!process.env.DATABASE_URL) {
 
 // Enable WebSocket transport so transactions are supported with Neon
 neonConfig.webSocketConstructor = WebSocket as unknown as typeof WebSocket;
-neonConfig.useSecureWebSocket = process.env.NODE_ENV !== "development";
+// Always use secure WebSocket (wss) — Neon requires TLS even in development
+neonConfig.useSecureWebSocket = true;
 
 // Use Pool with neon-serverless (transaction support)
 const pool = new Pool({ connectionString: process.env.DATABASE_URL! });

@@ -5,18 +5,17 @@ import { AdminProtectedRoute } from "@/components/auth/protected-route";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { authenticatedApiRequest, apiRequest } from "@/lib/api";
-import { useParams, useRouter } from "next/navigation";
+import { authenticatedApiRequest } from "@/lib/api";
+import { useParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle, Database, Radio } from "lucide-react";
+import { CheckCircle, Database, Radio } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
 export default function RivrExecBusinessDetailPage() {
   const params = useParams<{ businessId: string }>();
   const businessId = Number(params.businessId);
-  const router = useRouter();
   const { toast } = useToast();
 
   const { data: businessesData, isLoading: loadingBusinesses } = useQuery({
@@ -53,14 +52,14 @@ export default function RivrExecBusinessDetailPage() {
     }: {
       status: "pending" | "active" | "suspended" | "canceled";
     }) => {
-      const response = await apiRequest(
+      const data = await authenticatedApiRequest(
         `/api/admin/businesses/${businessId}/status`,
         {
           method: "PUT",
           body: JSON.stringify({ status }),
         }
       );
-      return response.json();
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });

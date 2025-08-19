@@ -3,6 +3,7 @@ import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import { Request, Response } from "express";
 import { z } from "zod";
 import { db } from "./db";
+import { deriveTenantSchemaFromSubdomain } from "./lib/tenant-db";
 import { businesses, rivrAdmins, users, refreshTokens } from "@repo/schema";
 import { and, eq } from "drizzle-orm";
 import { log } from "@repo/logger";
@@ -663,7 +664,7 @@ export const registerBusiness = async (
         phone: data.phone,
         address: data.address,
         subdomain: data.subdomain,
-        databaseSchema: `tenant_${data.subdomain}`,
+        databaseSchema: deriveTenantSchemaFromSubdomain(data.subdomain),
         status: "pending", // Requires approval
         subscriptionPlan: "starter",
         subscriptionStatus: "trial",
