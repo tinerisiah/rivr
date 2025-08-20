@@ -24,7 +24,13 @@ export const permissions: Record<Role, string[]> = {
     "pickup:read",
     "pickup:write",
   ],
-  driver: ["driver:self", "pickup:read", "pickup:update_status"],
+  driver: [
+    "driver:self",
+    "pickup:read",
+    "pickup:update_status",
+    // Allow drivers to create service requests without broad write permissions
+    "pickup:create",
+  ],
   // Business employee (view-only): can read business and pickup data
   employee_viewer: ["business:read", "pickup:read", "driver:read"],
 };

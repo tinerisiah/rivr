@@ -29,14 +29,10 @@ export function registerCustomerRoutes(
       (req.cookies?.["customer_token"] as string | undefined) || undefined;
     const headerToken =
       (req.headers?.["x-customer-token"] as string | undefined) || undefined;
-    const authHeader =
-      (req.headers?.authorization as string | undefined) || undefined;
-    const bearer =
-      authHeader && authHeader.startsWith("Bearer ")
-        ? authHeader.slice(7)
-        : undefined;
     const queryToken = (req.query?.token as string | undefined) || undefined;
-    return cookieToken || headerToken || bearer || queryToken;
+    // Do NOT fall back to Authorization Bearer tokens here because that header
+    // is used for driver/admin auth and would be misinterpreted as a customer token.
+    return cookieToken || headerToken || queryToken;
   };
   // Public endpoint to list businesses for selection (name + subdomain)
   app.get("/api/public/businesses", async (_req, res) => {
@@ -73,25 +69,19 @@ export function registerCustomerRoutes(
       if ("token" in customerData) delete customerData.token;
 
       let customer;
+      // Try token first if present
       if (token) {
         customer = await storage.getCustomerByToken(token);
-        if (!customer) {
-          return res.status(404).json({
-            success: false,
-            message: "Invalid customer token",
-          });
-        }
-      } else {
+      }
+
+      // Fallback: treat as new/existing-by-email
+      if (!customer) {
         const customerInfo = insertCustomerSchema.parse(customerData);
         const existingCustomer = await storage.getCustomerByEmail(
           customerInfo.email
         );
-
-        if (existingCustomer) {
-          customer = existingCustomer;
-        } else {
-          customer = await storage.createCustomer(customerInfo);
-        }
+        customer =
+          existingCustomer || (await storage.createCustomer(customerInfo));
       }
 
       const roRaw = customerData.roNumber;

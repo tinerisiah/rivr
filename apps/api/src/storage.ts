@@ -113,6 +113,16 @@ class Storage {
     });
   }
 
+  async getCustomerById(id: number): Promise<Customer | null> {
+    return this.withDb(async (dbc) => {
+      const [customer] = await dbc
+        .select()
+        .from(customers)
+        .where(eq(customers.id, id));
+      return customer || null;
+    });
+  }
+
   async getCustomerByToken(token: string): Promise<Customer | null> {
     return this.withDb(async (dbc) => {
       const [customer] = await dbc

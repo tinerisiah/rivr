@@ -51,6 +51,7 @@ import {
   openNativeNavigation,
   openAppleMapsWithAllPickups,
 } from "@/lib/navigation-utils";
+import DriverServiceRequestModal from "./driver-service-request-modal";
 // Simple navigation utility for driver dashboard
 const openNavigation = (addresses: string[]) => {
   if (!addresses || addresses.length === 0) {
@@ -139,6 +140,7 @@ export function DriverDashboard() {
   );
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
   const [activeTab, setActiveTab] = useState("available");
+  const [showCreateRequest, setShowCreateRequest] = useState(false);
   const { toast } = useToast();
   const { user, isAuthenticated: isMainAuth, logout } = useAuth();
   const router = useRouter();
@@ -672,14 +674,23 @@ export function DriverDashboard() {
               <h2 className="text-xl font-semibold text-foreground">
                 Available Tasks
               </h2>
-              <Button
-                onClick={handleRouteForMe}
-                disabled={selectedTasks.size === 0}
-                className="bg-blue-500 hover:bg-blue-600 text-white"
-              >
-                <Navigation className="h-4 w-4 mr-2" />
-                Route for Me ({selectedTasks.size})
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setShowCreateRequest(true)}
+                  variant="outline"
+                  className="border-blue-500 text-blue-600 hover:bg-blue-500 hover:text-white"
+                >
+                  New Service Request
+                </Button>
+                <Button
+                  onClick={handleRouteForMe}
+                  disabled={selectedTasks.size === 0}
+                  className="bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  <Navigation className="h-4 w-4 mr-2" />
+                  Route for Me ({selectedTasks.size})
+                </Button>
+              </div>
             </div>
 
             {isLoading ? (
@@ -1194,6 +1205,16 @@ export function DriverDashboard() {
           onComplete={completeWelcome}
         />
       )}
+
+      <DriverServiceRequestModal
+        isOpen={showCreateRequest}
+        onClose={() => setShowCreateRequest(false)}
+        onCreated={() => {
+          try {
+            refetch();
+          } catch {}
+        }}
+      />
     </div>
   );
 }

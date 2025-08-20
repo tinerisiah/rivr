@@ -44,6 +44,11 @@ const businessFormSchema = z.object({
   subscriptionPlan: z
     .enum(["starter", "professional", "enterprise"])
     .default("starter"),
+  // New: initial owner password to create the business admin user
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .describe("Owner password for business admin login"),
 });
 
 type BusinessFormData = z.infer<typeof businessFormSchema>;
@@ -72,6 +77,7 @@ export function BusinessForm({
       address: "",
       subdomain: "",
       subscriptionPlan: "starter",
+      password: "",
     },
   });
 
@@ -146,6 +152,25 @@ export function BusinessForm({
                     <Input
                       type="email"
                       placeholder="john@company.com"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Owner Password */}
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Owner Password*</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="password"
+                      placeholder="At least 8 characters"
                       {...field}
                     />
                   </FormControl>
