@@ -5,6 +5,7 @@ import { getStorage } from "../storage";
 import { broadcastToDrivers, sendToDriver } from "./websocket-routes";
 import { authenticateToken } from "../auth";
 import { requirePermission, requireTenantMatch } from "../auth/rbac";
+import { insertPickupRequestSchema } from "@repo/schema";
 
 export function registerDriverRoutes(app: Express) {
   // PIN-based authentication removed. Drivers should authenticate via credentials.
@@ -118,6 +119,137 @@ export function registerDriverRoutes(app: Express) {
           success: false,
           message: "Failed to fetch delivery requests",
         });
+      }
+    }
+  );
+
+  // List business customers for driver's tenant
+  app.get(
+    "/api/driver/customers",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("pickup:read"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const customers = await storage.getCustomers();
+        // Minimal fields for dropdown
+        const list = customers.map((c) => ({
+          id: c.id,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          email: c.email,
+          businessName: c.businessName,
+        }));
+        res.json({ success: true, customers: list });
+      } catch (error) {
+        log("error", "Error fetching driver customers", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to fetch customers" });
+      }
+    }
+  );
+
+  // Create a pickup/service request on behalf of a selected customer
+  app.post(
+    "/api/driver/pickup-requests",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("pickup:create"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const schema = z.object({
+          customerId: z.number().int().positive(),
+          roNumber: z.string().optional(),
+          customerNotes: z.string().optional(),
+          address: z.string().optional(),
+        });
+        const payload = schema.parse(req.body || {});
+
+        const customer = await storage.getCustomerById(payload.customerId);
+        if (!customer) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Customer not found" });
+        }
+
+        const pickupRequestData: any = {
+          customerId: customer.id,
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          email: customer.email,
+          phone: customer.phone,
+          businessName: customer.businessName,
+          address: payload.address || customer.address,
+          roNumber:
+            payload.roNumber && payload.roNumber.trim().length > 0
+              ? payload.roNumber.trim()
+              : null,
+          customerNotes:
+            payload.customerNotes && payload.customerNotes.trim().length > 0
+              ? payload.customerNotes.trim()
+              : null,
+        };
+
+        // Validate shape against insert schema
+        const validated = insertPickupRequestSchema
+          .partial({
+            wheelCount: true,
+            latitude: true,
+            longitude: true,
+            isCompleted: true,
+            completedAt: true,
+            completionPhoto: true,
+            completionLocation: true,
+            completionNotes: true,
+            employeeName: true,
+            inProcessAt: true,
+            readyForDeliveryAt: true,
+            readyToBillAt: true,
+            deliveryPhoto: true,
+            wheelQrCodes: true,
+            isDelivered: true,
+            deliveredAt: true,
+            deliveryNotes: true,
+            deliveryQrCodes: true,
+            isArchived: true,
+            archivedAt: true,
+            routeId: true,
+            routeOrder: true,
+            priority: true,
+            estimatedPickupTime: true,
+            productionStatus: true,
+            billedAt: true,
+            billedAmount: true,
+            invoiceNumber: true,
+          })
+          .parse(pickupRequestData);
+
+        const created = await storage.createPickupRequest(validated as any);
+
+        res.json({
+          success: true,
+          message: "Pickup request created",
+          requestId: created.id,
+        });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid request data",
+            errors: error.errors,
+          });
+        }
+        log("error", "Error creating pickup request by driver", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return res
+          .status(500)
+          .json({ success: false, message: "Failed to create request" });
       }
     }
   );

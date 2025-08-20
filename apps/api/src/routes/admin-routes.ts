@@ -13,7 +13,9 @@ import {
 import { authenticateToken } from "../auth";
 import { requirePermission, requireTenantMatch } from "../auth/rbac";
 import { db } from "../db";
-import { businesses, insertBusinessEmployeeSchema } from "@repo/schema";
+import { eq } from "drizzle-orm";
+import { businesses, insertBusinessEmployeeSchema, users } from "@repo/schema";
+import { hashPassword } from "../auth";
 import {
   provisionTenantSchema,
   deriveTenantSchemaFromSubdomain,
@@ -721,13 +723,21 @@ export function registerAdminRoutes(app: Express) {
         const storage = getStorage(req);
         // Allow callers to omit databaseSchema; derive from subdomain when absent
         const incoming = req.body as any;
+        // Extract optional owner password for business owner login
+        const ownerPassword: string | undefined =
+          typeof incoming?.password === "string" &&
+          incoming.password.trim().length >= 8
+            ? String(incoming.password)
+            : undefined;
+        // Exclude password from business payload before validation
+        const { password: _pw, ...rest } = incoming || {};
         const payload = {
-          ...incoming,
+          ...rest,
           databaseSchema:
-            typeof incoming?.databaseSchema === "string" &&
-            incoming.databaseSchema.trim().length > 0
-              ? incoming.databaseSchema
-              : deriveTenantSchemaFromSubdomain(incoming?.subdomain ?? ""),
+            typeof rest?.databaseSchema === "string" &&
+            rest.databaseSchema.trim().length > 0
+              ? rest.databaseSchema
+              : deriveTenantSchemaFromSubdomain(rest?.subdomain ?? ""),
         };
         const businessData = insertBusinessSchema.parse(payload);
         const business = await storage.createBusiness(businessData);
@@ -741,6 +751,39 @@ export function registerAdminRoutes(app: Express) {
             schema: (business as any).databaseSchema,
             businessId: (business as any).id,
           });
+        }
+
+        // If admin provided a password, create/update the business owner user account
+        if (ownerPassword) {
+          try {
+            const hashed = await hashPassword(ownerPassword);
+            // Upsert-style: try update; if not exists, insert
+            const [existing] = await db
+              .select()
+              .from(users)
+              .where(eq(users.username, business.ownerEmail))
+              .limit(1);
+            if (existing) {
+              await db
+                .update(users)
+                .set({ password: hashed })
+                .where(eq(users.username, business.ownerEmail));
+            } else {
+              await db.insert(users).values({
+                username: business.ownerEmail,
+                password: hashed,
+              } as any);
+            }
+          } catch (e) {
+            log(
+              "warn",
+              "Failed to create/update business owner user from admin create",
+              {
+                error: e instanceof Error ? e.message : String(e),
+                ownerEmail: (business as any).ownerEmail,
+              }
+            );
+          }
         }
 
         res.json({
