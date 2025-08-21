@@ -220,6 +220,7 @@ export const customers = pgTable(
       .notNull(),
     customSignature: text("custom_signature"),
     customLogo: text("custom_logo"),
+    isSuspended: boolean("is_suspended").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -264,6 +265,11 @@ export const pickupRequests = pgTable(
     inProcessAt: timestamp("in_process_at"),
     readyForDeliveryAt: timestamp("ready_for_delivery_at"),
     readyToBillAt: timestamp("ready_to_bill_at"),
+    // Optional photos captured at each production step
+    inProcessPhoto: text("in_process_photo"),
+    readyForDeliveryPhoto: text("ready_for_delivery_photo"),
+    readyToBillPhoto: text("ready_to_bill_photo"),
+    billedPhoto: text("billed_photo"),
     // Delivery completion photo
     deliveryPhoto: text("delivery_photo"),
     wheelQrCodes: text("wheel_qr_codes").array().default([]),

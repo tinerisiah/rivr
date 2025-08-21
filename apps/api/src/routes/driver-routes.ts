@@ -287,7 +287,8 @@ export function registerDriverRoutes(app: Express) {
         // Mark timeline in_process
         const updated = await storage.updatePickupRequestProductionStatus(
           pickupId,
-          "in_process"
+          "in_process",
+          completionData.completionPhoto
         );
         // Send email on transition to in_process if template exists
         try {
@@ -382,7 +383,8 @@ export function registerDriverRoutes(app: Express) {
         // Update delivery to "ready_to_bill" status and timeline
         const updated = await storage.updatePickupRequestProductionStatus(
           deliveryId,
-          "ready_to_bill"
+          "ready_to_bill",
+          photo
         );
 
         // Email on ready_to_bill

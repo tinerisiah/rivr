@@ -142,6 +142,93 @@ export function registerAdminRoutes(app: Express) {
     }
   );
 
+  // Suspend/unsuspend customer
+  app.put(
+    "/api/admin/customers/:id/suspend",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("business:write"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const id = parseInt(req.params.id);
+        const body = z
+          .object({ isSuspended: z.boolean(), notify: z.boolean().optional() })
+          .parse(req.body || {});
+
+        const updated = await storage.setCustomerSuspended(
+          id,
+          body.isSuspended
+        );
+        if (!updated) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Customer not found" });
+        }
+
+        // Optional notification email when suspending
+        if (body.isSuspended && updated.email) {
+          try {
+            const { sendEmail } = await import("../email-utils");
+            const html = `
+              <div>
+                <p>Your account appears to be past due or requires attention.</p>
+                <p>Please reach out to our team to restore access.</p>
+              </div>
+            `;
+            await sendEmail({
+              to: updated.email,
+              subject: "Account Suspended - Action Required",
+              html,
+            });
+          } catch (e) {
+            // non-blocking email failure
+          }
+        }
+
+        res.json({ success: true, customer: updated });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid request",
+            errors: error.errors,
+          });
+        }
+        log("error", "Failed to update customer suspension", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return res.status(500).json({
+          success: false,
+          message: "Failed to update suspension state",
+        });
+      }
+    }
+  );
+
+  // Delete customer (and related records)
+  app.delete(
+    "/api/admin/customers/:id",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("business:write"),
+    async (req, res) => {
+      try {
+        const storage = getStorage(req);
+        const id = parseInt(req.params.id);
+        await storage.deleteCustomerCascade(id);
+        res.json({ success: true, message: "Customer and records deleted" });
+      } catch (error) {
+        log("error", "Failed to delete customer", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        res
+          .status(500)
+          .json({ success: false, message: "Failed to delete customer" });
+      }
+    }
+  );
+
   // Request management routes
   app.get(
     "/api/admin/pickup-requests",
@@ -193,7 +280,20 @@ export function registerAdminRoutes(app: Express) {
     "/api/admin/pickup-requests/:id/production-status",
     authenticateToken,
     requireTenantMatch(),
-    requirePermission("pickup:write"),
+    // Allow either full write or limited update_status permission
+    (req, res, next) => {
+      const role = req.user?.role as any;
+      const { hasPermission } = require("../auth/rbac");
+      if (
+        hasPermission(role, "pickup:write") ||
+        hasPermission(role, "pickup:update_status")
+      ) {
+        return next();
+      }
+      return res
+        .status(403)
+        .json({ success: false, message: "Insufficient permissions" });
+    },
     async (req, res) => {
       try {
         const storage = getStorage(req);
@@ -206,12 +306,14 @@ export function registerAdminRoutes(app: Express) {
 
         const bodySchema = z.object({
           productionStatus: z.string().min(1, "productionStatus is required"),
+          photo: z.string().optional(),
         });
-        const { productionStatus } = bodySchema.parse(req.body);
+        const { productionStatus, photo } = bodySchema.parse(req.body);
 
         const updated = await storage.updatePickupRequestProductionStatus(
           pickupId,
-          productionStatus
+          productionStatus,
+          photo
         );
 
         if (!updated) {
@@ -786,6 +888,24 @@ export function registerAdminRoutes(app: Express) {
           }
         }
 
+        // Best-effort: email the owner with their personal subdomain and links
+        try {
+          const { buildBusinessWelcomeEmail, sendEmail } = await import(
+            "../email-utils"
+          );
+          const { subject, html } = buildBusinessWelcomeEmail({
+            businessName: (business as any).businessName,
+            subdomain: (business as any).subdomain,
+          });
+          await sendEmail({
+            to: (business as any).ownerEmail,
+            subject,
+            html,
+          });
+        } catch (e) {
+          // non-blocking
+        }
+
         res.json({
           success: true,
           business,
@@ -938,6 +1058,26 @@ export function registerAdminRoutes(app: Express) {
         }
 
         const business = await storage.updateBusinessStatus(businessId, status);
+
+        // On activation, notify the owner with their subdomain and portal link
+        if (business && status === "active") {
+          try {
+            const { buildBusinessActivationEmail, sendEmail } = await import(
+              "../email-utils"
+            );
+            const { subject, html } = buildBusinessActivationEmail({
+              businessName: (business as any).businessName,
+              subdomain: (business as any).subdomain,
+            });
+            await sendEmail({
+              to: (business as any).ownerEmail,
+              subject,
+              html,
+            });
+          } catch (e) {
+            // non-blocking
+          }
+        }
 
         res.json({
           success: true,

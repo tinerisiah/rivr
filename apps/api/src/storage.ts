@@ -153,6 +153,28 @@ class Storage {
     });
   }
 
+  async setCustomerSuspended(
+    id: number,
+    suspended: boolean
+  ): Promise<Customer | null> {
+    return this.withDb(async (dbc) => {
+      const [customer] = await dbc
+        .update(customers)
+        .set({ isSuspended: suspended, updatedAt: new Date() } as any)
+        .where(eq(customers.id, id))
+        .returning();
+      return customer || null;
+    });
+  }
+
+  async deleteCustomerCascade(id: number): Promise<void> {
+    return this.withDb(async (dbc) => {
+      // Delete dependent pickup requests first due to FK
+      await dbc.delete(pickupRequests).where(eq(pickupRequests.customerId, id));
+      await dbc.delete(customers).where(eq(customers.id, id));
+    });
+  }
+
   // Pickup request operations
   async createPickupRequest(data: InsertPickupRequest): Promise<PickupRequest> {
     return this.withDb(async (dbc) => {
@@ -263,14 +285,27 @@ class Storage {
 
   async updatePickupRequestProductionStatus(
     id: number,
-    status: string
+    status: string,
+    photo?: string
   ): Promise<PickupRequest | null> {
     return this.withDb(async (dbc) => {
       const now = new Date();
       const timeline: any = { productionStatus: status as any };
-      if (status === "in_process") timeline.inProcessAt = now;
-      if (status === "ready_for_delivery") timeline.readyForDeliveryAt = now;
-      if (status === "ready_to_bill") timeline.readyToBillAt = now;
+      if (status === "in_process") {
+        timeline.inProcessAt = now;
+        if (photo) timeline.inProcessPhoto = photo;
+      }
+      if (status === "ready_for_delivery") {
+        timeline.readyForDeliveryAt = now;
+        if (photo) timeline.readyForDeliveryPhoto = photo;
+      }
+      if (status === "ready_to_bill") {
+        timeline.readyToBillAt = now;
+        if (photo) timeline.readyToBillPhoto = photo;
+      }
+      if (status === "billed") {
+        if (photo) timeline.billedPhoto = photo;
+      }
       const [request] = await dbc
         .update(pickupRequests)
         .set(timeline)

@@ -32,7 +32,13 @@ export const permissions: Record<Role, string[]> = {
     "pickup:create",
   ],
   // Business employee (view-only): can read business and pickup data
-  employee_viewer: ["business:read", "pickup:read", "driver:read"],
+  employee_viewer: [
+    "business:read",
+    "pickup:read",
+    "driver:read",
+    // Allow limited production status updates without full write
+    "pickup:update_status",
+  ],
 };
 
 // Optional role inheritance (higher roles inherit from lower)

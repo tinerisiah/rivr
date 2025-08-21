@@ -164,6 +164,78 @@ export default function ServiceRequestModal({
     form.reset(nextValues);
   }, [form, initialData, isOpen, subdomain]);
 
+  // Determine if this is a returning user with saved info
+  const [isReturningUser, setIsReturningUser] = useState(false);
+  useEffect(() => {
+    if (!isOpen) return;
+    let returning = false;
+
+    try {
+      if (
+        typeof document !== "undefined" &&
+        document.cookie.includes("customer_token=")
+      ) {
+        returning = true;
+      }
+    } catch {
+      void 0;
+    }
+
+    if (!returning) {
+      try {
+        const stored =
+          typeof window !== "undefined"
+            ? window.localStorage.getItem("customer_form_data")
+            : null;
+        if (stored) {
+          const parsed = JSON.parse(
+            stored
+          ) as Partial<CombinedServiceRequestData> &
+            Partial<{ customerNotes: string }>;
+          if (parsed?.firstName && parsed?.lastName && parsed?.email) {
+            returning = true;
+          }
+        }
+      } catch {
+        void 0;
+      }
+    }
+
+    if (!returning && initialData) {
+      const { firstName, lastName, email } = initialData;
+      if (firstName && lastName && email) returning = true;
+    }
+
+    setIsReturningUser(returning);
+  }, [isOpen, initialData]);
+
+  // If returning user and we have stored data, lightly prefill to satisfy validation
+  useEffect(() => {
+    if (!isOpen || !isReturningUser) return;
+    try {
+      const stored =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("customer_form_data")
+          : null;
+      if (stored) {
+        const u = JSON.parse(stored) as Partial<CombinedServiceRequestData> &
+          Partial<{ customerNotes: string }>;
+        if (u) {
+          if (u.firstName) form.setValue("firstName", u.firstName);
+          if (u.lastName) form.setValue("lastName", u.lastName);
+          if (u.email) form.setValue("email", u.email);
+          if (u.phone) form.setValue("phone", u.phone);
+          if (u.businessName) form.setValue("businessName", u.businessName);
+          if (u.address) form.setValue("address", u.address);
+          if (u.roNumber) form.setValue("roNumber", u.roNumber);
+          if (u.notes) form.setValue("notes", u.notes);
+        }
+      }
+    } catch {
+      void 0;
+    }
+  }, [isOpen, isReturningUser, form]);
+
   const validateAddress = async (address: string) => {
     if (!address || address.length < 8) {
       setAddressValidation({ status: "idle" });
@@ -286,141 +358,151 @@ export default function ServiceRequestModal({
             onSubmit={form.handleSubmit(handleSubmit)}
             className="space-y-4"
           >
-            {/* Business selection when no tenant */}
-            {!subdomain && businesses.length > 0 && (
-              <FormField
-                control={form.control}
-                name="businessSubdomain"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Business</FormLabel>
-                    <Select
-                      onValueChange={(val) => {
-                        field.onChange(val);
-                        const selected = businesses.find(
-                          (b) => b.subdomain === val
-                        );
-                        if (selected) {
-                          form.setValue("businessName", selected.businessName);
-                        }
-                      }}
-                      value={field.value || ""}
-                    >
-                      <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="Select business to link" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {businesses.map((b) => (
-                          <SelectItem key={b.id} value={b.subdomain}>
-                            {b.businessName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {/* Name fields */}
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="firstName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>First Name*</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="John"
-                        {...field}
-                        disabled={disableUserFields}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="lastName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Last Name*</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Doe"
-                        {...field}
-                        disabled={disableUserFields}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Email */}
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email Address*</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="email"
-                      placeholder="john@company.com"
-                      {...field}
-                      disabled={disableUserFields}
+            {(() => {
+              const hideUserFields = isReturningUser || disableUserFields;
+              return (
+                <div className={hideUserFields ? "hidden" : ""}>
+                  {/* Business selection when no tenant */}
+                  {!subdomain && businesses.length > 0 && (
+                    <FormField
+                      control={form.control}
+                      name="businessSubdomain"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Business</FormLabel>
+                          <Select
+                            onValueChange={(val) => {
+                              field.onChange(val);
+                              const selected = businesses.find(
+                                (b) => b.subdomain === val
+                              );
+                              if (selected) {
+                                form.setValue(
+                                  "businessName",
+                                  selected.businessName
+                                );
+                              }
+                            }}
+                            value={field.value || ""}
+                          >
+                            <SelectTrigger className="bg-background">
+                              <SelectValue placeholder="Select business to link" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {businesses.map((b) => (
+                                <SelectItem key={b.id} value={b.subdomain}>
+                                  {b.businessName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                  )}
 
-            {/* Phone */}
-            <FormField
-              control={form.control}
-              name="phone"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Phone Number</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="tel"
-                      placeholder="(555) 123-4567"
-                      {...field}
-                      disabled={disableUserFields}
+                  {/* Name fields */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="firstName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>First Name*</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="John"
+                              {...field}
+                              disabled={disableUserFields}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormField
+                      control={form.control}
+                      name="lastName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Last Name*</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Doe"
+                              {...field}
+                              disabled={disableUserFields}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
-            {/* Business name (hidden when tenant present) */}
-            {!subdomain && (
-              <FormField
-                control={form.control}
-                name="businessName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Business Name*</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Acme Auto Service"
-                        {...field}
-                        disabled={disableUserFields}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+                  {/* Email */}
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email Address*</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            placeholder="john@company.com"
+                            {...field}
+                            disabled={disableUserFields}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Phone */}
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="tel"
+                            placeholder="(555) 123-4567"
+                            {...field}
+                            disabled={disableUserFields}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Business name (hidden when tenant present) */}
+                  {!subdomain && (
+                    <FormField
+                      control={form.control}
+                      name="businessName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Business Name*</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Acme Auto Service"
+                              {...field}
+                              disabled={disableUserFields}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Address */}
             <FormField

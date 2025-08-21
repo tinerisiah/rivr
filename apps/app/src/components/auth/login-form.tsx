@@ -45,9 +45,9 @@ export function LoginForm({
   const [error, setError] = useState<string | null>(null);
   const { login, isLoading } = useAuth();
   const { toast } = useToast();
-  const { subdomain: detectedSubdomain, isExec } = useTenant();
+  const { subdomain: detectedSubdomain, isExec, baseDomain } = useTenant();
 
-  const hasSubdomain = Boolean(detectedSubdomain) && !isExec;
+  const hasSubdomain = !!detectedSubdomain;
 
   // Build schema based on login type. Business and driver require a tenant.
   const shouldRequireTenant = type !== "rivr_admin" && !hasSubdomain;
@@ -96,6 +96,59 @@ export function LoginForm({
           description: `Welcome back!`,
         });
         reset();
+        // Ensure access token cookie is set on base domain before potential cross-subdomain redirect
+        try {
+          if (typeof window !== "undefined" && result.accessToken) {
+            const host = window.location.hostname.toLowerCase();
+            const isSecure = window.location.protocol === "https:";
+            const cookieParts: string[] = [
+              `accessToken=${encodeURIComponent(result.accessToken)}`,
+              "Path=/",
+              "SameSite=Lax",
+            ];
+            if (
+              baseDomain &&
+              baseDomain.includes(".") &&
+              (host === baseDomain || host.endsWith(`.${baseDomain}`))
+            ) {
+              cookieParts.push(`Domain=.${baseDomain}`);
+            }
+            if (isSecure) cookieParts.push("Secure");
+            document.cookie = cookieParts.join("; ");
+          }
+        } catch {
+          // ignore cookie write errors
+        }
+        // Redirect to tenant subdomain if provided and not already on it
+        try {
+          if (typeof window !== "undefined") {
+            const currentHost = window.location.hostname.toLowerCase();
+            const targetSub =
+              (result as any)?.user?.subdomain?.toLowerCase?.() || tenantInput;
+            if (
+              targetSub &&
+              baseDomain &&
+              (currentHost === baseDomain ||
+                !currentHost.endsWith(`.${baseDomain}`) ||
+                !currentHost.startsWith(`${targetSub}.`))
+            ) {
+              const targetHost = `${targetSub}.${baseDomain}`;
+              const userRole = (result as any)?.user?.role || type;
+              const path =
+                userRole === "driver"
+                  ? "/driver"
+                  : userRole === "employee_viewer" ||
+                      userRole === "business_owner"
+                    ? "/business-admin"
+                    : "/";
+              const protocol = window.location.protocol;
+              window.location.href = `${protocol}//${targetHost}${path}`;
+              return;
+            }
+          }
+        } catch {
+          // ignore redirect errors
+        }
         onSuccess?.();
       } else {
         setError(result.message);

@@ -103,6 +103,7 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
       email_updates_enabled boolean DEFAULT false NOT NULL,
       custom_signature text,
       custom_logo text,
+      is_suspended boolean DEFAULT false NOT NULL,
       created_at timestamp DEFAULT now() NOT NULL,
       updated_at timestamp DEFAULT now() NOT NULL
     );
@@ -113,7 +114,8 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
        ADD COLUMN IF NOT EXISTS email_updates_enabled boolean DEFAULT false NOT NULL,
        ADD COLUMN IF NOT EXISTS custom_signature text,
        ADD COLUMN IF NOT EXISTS custom_logo text,
-       ADD COLUMN IF NOT EXISTS password text;
+       ADD COLUMN IF NOT EXISTS password text,
+       ADD COLUMN IF NOT EXISTS is_suspended boolean DEFAULT false NOT NULL;
     `
   );
 
@@ -163,7 +165,11 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
        ADD COLUMN IF NOT EXISTS in_process_at timestamp,
        ADD COLUMN IF NOT EXISTS ready_for_delivery_at timestamp,
        ADD COLUMN IF NOT EXISTS ready_to_bill_at timestamp,
-       ADD COLUMN IF NOT EXISTS delivery_photo text;`
+       ADD COLUMN IF NOT EXISTS delivery_photo text,
+       ADD COLUMN IF NOT EXISTS in_process_photo text,
+       ADD COLUMN IF NOT EXISTS ready_for_delivery_photo text,
+       ADD COLUMN IF NOT EXISTS ready_to_bill_photo text,
+       ADD COLUMN IF NOT EXISTS billed_photo text;`
   );
 
   // Quote requests table to support admin quote management

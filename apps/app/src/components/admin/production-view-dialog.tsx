@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -33,7 +33,11 @@ interface ProductionViewDialogProps {
   isOpen: boolean;
   onClose: () => void;
   request: PickupRequest | null;
-  onUpdateProductionStatus: (requestId: number, status: string) => void;
+  onUpdateProductionStatus: (
+    requestId: number,
+    status: string,
+    photo?: string
+  ) => void;
   readOnly?: boolean;
 }
 
@@ -45,13 +49,15 @@ export function ProductionViewDialog({
   readOnly = false,
 }: ProductionViewDialogProps) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const [stepPhoto, setStepPhoto] = useState<string | undefined>(undefined);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!request) return null;
 
   const handleStatusUpdate = async (newStatus: string) => {
     setIsUpdating(true);
     try {
-      await onUpdateProductionStatus(request.id, newStatus);
+      await onUpdateProductionStatus(request.id, newStatus, stepPhoto);
       // Close dialog after successful update
       onClose();
     } catch (error) {
@@ -79,7 +85,7 @@ export function ProductionViewDialog({
   };
 
   const getStatusLabel = (status: string) => {
-    return (status || "pending").replace("_", " ").toUpperCase();
+    return (status || "pending").replace(/_/g, " ").toUpperCase();
   };
 
   const getNextStatus = (currentStatus: string) => {
@@ -174,6 +180,34 @@ export function ProductionViewDialog({
                 >
                   {isUpdating ? "Updating..." : nextStatus.label}
                 </Button>
+              )}
+              {nextStatus && !readOnly && (
+                <div className="flex items-center gap-2 w-full justify-end">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          const result = ev.target?.result as string;
+                          setStepPhoto(result);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {stepPhoto ? "Change Photo" : "Add Photo"}
+                  </Button>
+                </div>
               )}
             </div>
           </div>
@@ -310,6 +344,15 @@ export function ProductionViewDialog({
                   </span>
                 </div>
               )}
+              {(request as any).inProcessPhoto && (
+                <div className="pl-6">
+                  <img
+                    src={(request as any).inProcessPhoto}
+                    alt="In Process Photo"
+                    className="max-h-48 rounded-md border border-border"
+                  />
+                </div>
+              )}
 
               {readyForDeliveryAt ? (
                 <div className="flex items-center gap-3">
@@ -322,6 +365,15 @@ export function ProductionViewDialog({
                   </span>
                 </div>
               ) : null}
+              {(request as any).readyForDeliveryPhoto && (
+                <div className="pl-6">
+                  <img
+                    src={(request as any).readyForDeliveryPhoto}
+                    alt="Ready For Delivery Photo"
+                    className="max-h-48 rounded-md border border-border"
+                  />
+                </div>
+              )}
 
               {readyToBillAt || deliveredDate ? (
                 <div className="flex items-center gap-3">
@@ -338,6 +390,15 @@ export function ProductionViewDialog({
                   </span>
                 </div>
               ) : null}
+              {(request as any).readyToBillPhoto && (
+                <div className="pl-6">
+                  <img
+                    src={(request as any).readyToBillPhoto}
+                    alt="Ready To Bill Photo"
+                    className="max-h-48 rounded-md border border-border"
+                  />
+                </div>
+              )}
 
               {request.productionStatus === "billed" ? (
                 <div className="flex items-center gap-3">
@@ -350,6 +411,15 @@ export function ProductionViewDialog({
                   </span>
                 </div>
               ) : null}
+              {(request as any).billedPhoto && (
+                <div className="pl-6">
+                  <img
+                    src={(request as any).billedPhoto}
+                    alt="Billed Photo"
+                    className="max-h-48 rounded-md border border-border"
+                  />
+                </div>
+              )}
             </div>
           </Card>
 

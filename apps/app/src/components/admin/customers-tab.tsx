@@ -18,6 +18,14 @@ import {
   Calendar,
 } from "lucide-react";
 import type { Customer, PickupRequest } from "@/lib/schema";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 interface CustomersTabProps {
   customers: Customer[];
@@ -29,6 +37,8 @@ interface CustomersTabProps {
   onCopyLink: (token: string) => void;
   onEmailCustomer: (customer: Customer) => void;
   copiedToken: string | null;
+  onDeleteCustomer?: (customerId: number) => void;
+  onSuspendCustomer?: (customerId: number, isSuspended: boolean) => void;
 }
 
 export function CustomersTab({
@@ -41,8 +51,18 @@ export function CustomersTab({
   onCopyLink,
   onEmailCustomer,
   copiedToken,
+  onDeleteCustomer,
+  onSuspendCustomer,
 }: CustomersTabProps) {
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [confirmDeleteCustomerId, setConfirmDeleteCustomerId] = useState<
+    number | null
+  >(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [suspendCustomer, setSuspendCustomer] = useState<null | {
+    id: number;
+    current: boolean;
+  }>(null);
 
   // Filter and sort customers for CRM functionality
   const filteredAndSortedCustomers = customers
@@ -225,6 +245,31 @@ export function CustomersTab({
                           <Mail className="w-3 h-3 mr-1" />
                           Email
                         </Button>
+                        <Button
+                          onClick={() =>
+                            setSuspendCustomer({
+                              id: customer.id,
+                              current: (customer as any).isSuspended ?? false,
+                            })
+                          }
+                          variant="outline"
+                          size="sm"
+                          className="border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-white text-xs"
+                        >
+                          {(customer as any).isSuspended
+                            ? "Unsuspend"
+                            : "Suspend"}
+                        </Button>
+                        <Button
+                          onClick={() =>
+                            setConfirmDeleteCustomerId(customer.id)
+                          }
+                          variant="outline"
+                          size="sm"
+                          className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white text-xs"
+                        >
+                          Delete
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -234,6 +279,102 @@ export function CustomersTab({
           })
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      <Dialog
+        open={confirmDeleteCustomerId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmDeleteCustomerId(null);
+            setDeleteConfirmText("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogDescription>
+              Deleting will also delete all prior customer records.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label htmlFor="confirmDelete">Type "delete" to confirm</Label>
+            <Input
+              id="confirmDelete"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="delete"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setConfirmDeleteCustomerId(null);
+                  setDeleteConfirmText("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={deleteConfirmText.toLowerCase() !== "delete"}
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => {
+                  if (
+                    confirmDeleteCustomerId &&
+                    deleteConfirmText.toLowerCase() === "delete"
+                  ) {
+                    onDeleteCustomer?.(confirmDeleteCustomerId);
+                  }
+                  setConfirmDeleteCustomerId(null);
+                  setDeleteConfirmText("");
+                }}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Suspend confirmation modal */}
+      <Dialog
+        open={!!suspendCustomer}
+        onOpenChange={(open) => {
+          if (!open) setSuspendCustomer(null);
+        }}
+      >
+        <DialogContent className="max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle>
+              {suspendCustomer?.current
+                ? "Unsuspend Customer"
+                : "Suspend Customer"}
+            </DialogTitle>
+            <DialogDescription>
+              Suspending will notify the customer to reach out if past due.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setSuspendCustomer(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+              onClick={() => {
+                if (suspendCustomer) {
+                  onSuspendCustomer?.(
+                    suspendCustomer.id,
+                    !suspendCustomer.current
+                  );
+                }
+                setSuspendCustomer(null);
+              }}
+            >
+              {suspendCustomer?.current ? "Unsuspend" : "Suspend"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

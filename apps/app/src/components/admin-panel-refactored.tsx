@@ -104,6 +104,8 @@ interface AdminPanelRefactoredProps {
   customerLinkText?: string;
   customLogo?: string | null;
   onLogoChange?: (logo: string | null) => void;
+  // When true, allow employee_viewer role to manage Production tab actions
+  allowEmployeeViewerManageProduction?: boolean;
 }
 
 export function AdminPanelRefactored({
@@ -116,9 +118,11 @@ export function AdminPanelRefactored({
   customerLinkText = "Customer View",
   customLogo,
   onLogoChange,
+  allowEmployeeViewerManageProduction = false,
 }: AdminPanelRefactoredProps) {
   const { user, isAuthenticated: isMainAuth, logout } = useAuth();
   const isReadOnly = user?.role === "employee_viewer";
+  const productionReadOnly = isReadOnly && !allowEmployeeViewerManageProduction;
 
   const { toast } = useToast();
   const router = useRouter();
@@ -429,6 +433,54 @@ export function AdminPanelRefactored({
       toast({
         title: "Error",
         description: "Failed to update customer",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const suspendCustomerMutation = useMutation({
+    mutationFn: async (payload: { id: number; isSuspended: boolean }) => {
+      const response = await apiRequest(
+        "PUT",
+        `/api/admin/customers/${payload.id}/suspend`,
+        { isSuspended: payload.isSuspended, notify: payload.isSuspended }
+      );
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/customers"] });
+      toast({
+        title: "Customer Updated",
+        description: "Customer suspension status updated",
+        variant: "default",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update customer suspension",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteCustomerMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("DELETE", `/api/admin/customers/${id}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/customers"] });
+      toast({
+        title: "Customer Deleted",
+        description: "Customer and records deleted",
+        variant: "default",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete customer",
         variant: "destructive",
       });
     },
@@ -782,7 +834,11 @@ export function AdminPanelRefactored({
     }
   };
 
-  const updateProductionStatus = async (requestId: number, status: string) => {
+  const updateProductionStatus = async (
+    requestId: number,
+    status: string,
+    photo?: string
+  ) => {
     try {
       pendingStatusUpdateIdsRef.current.add(requestId);
       const response = await apiRequest(
@@ -790,6 +846,7 @@ export function AdminPanelRefactored({
         `/api/admin/pickup-requests/${requestId}/production-status`,
         {
           productionStatus: status,
+          ...(photo ? { photo } : {}),
         }
       );
 
@@ -942,6 +999,10 @@ export function AdminPanelRefactored({
           onCopyLink={copyToClipboard}
           onEmailCustomer={handleEmailCustomer}
           copiedToken={copiedToken}
+          onDeleteCustomer={(id) => deleteCustomerMutation.mutate(id)}
+          onSuspendCustomer={(id, isSuspended) =>
+            suspendCustomerMutation.mutate({ id, isSuspended })
+          }
         />
       ),
     },
@@ -968,7 +1029,7 @@ export function AdminPanelRefactored({
       content: (
         <ProductionTab
           requests={requests}
-          readOnly={isReadOnly}
+          readOnly={productionReadOnly}
           onUpdateProductionStatus={updateProductionStatus}
           onExportReport={exportProductionReport}
           onViewJobDetails={handleViewJobDetails}

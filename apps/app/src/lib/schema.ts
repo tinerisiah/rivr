@@ -194,6 +194,7 @@ export const customers = pgTable(
       .notNull(),
     customSignature: text("custom_signature"),
     customLogo: text("custom_logo"),
+    isSuspended: boolean("is_suspended").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
