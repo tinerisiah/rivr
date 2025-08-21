@@ -20,7 +20,11 @@ import { ProductionViewDialog } from "./production-view-dialog";
 interface ProductionTabProps {
   requests: PickupRequest[];
   readOnly?: boolean;
-  onUpdateProductionStatus: (requestId: number, status: string) => void;
+  onUpdateProductionStatus: (
+    requestId: number,
+    status: string,
+    photo?: string
+  ) => void;
   onExportReport: () => void;
   onViewJobDetails: (request: PickupRequest) => void;
 }
@@ -30,7 +34,6 @@ export function ProductionTab({
   readOnly = false,
   onUpdateProductionStatus,
   onExportReport,
-  onViewJobDetails,
 }: ProductionTabProps) {
   const [showTodayOnly, setShowTodayOnly] = useState(true);
   const [reportSearchTerm, setReportSearchTerm] = useState("");
@@ -134,8 +137,12 @@ export function ProductionTab({
     setSelectedRequest(null);
   };
 
-  const handleUpdateStatus = async (requestId: number, status: string) => {
-    await onUpdateProductionStatus(requestId, status);
+  const handleUpdateStatus = async (
+    requestId: number,
+    status: string,
+    photo?: string
+  ) => {
+    await onUpdateProductionStatus(requestId, status, photo);
     // Refresh the selected request data
     const updatedRequest = requests.find((r) => r.id === requestId);
     if (updatedRequest) {
@@ -676,7 +683,7 @@ export function ProductionTab({
             </thead>
             <tbody>
               {(() => {
-                let filteredRequests = requests.filter((r: PickupRequest) => {
+                const filteredRequests = requests.filter((r: PickupRequest) => {
                   // Date range filter
                   const requestDate = new Date(r.createdAt);
                   let dateMatch = true;
@@ -799,7 +806,7 @@ export function ProductionTab({
           <div className="mt-4 text-sm text-muted-foreground text-center">
             Showing{" "}
             {(() => {
-              let count = requests.filter((r: PickupRequest) => {
+              const count = requests.filter((r: PickupRequest) => {
                 const requestDate = new Date(r.createdAt);
                 let dateMatch = true;
 

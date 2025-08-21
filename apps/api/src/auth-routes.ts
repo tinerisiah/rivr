@@ -45,6 +45,24 @@ import {
 import crypto from "crypto";
 
 export function registerAuthRoutes(app: Express) {
+  const cookieBaseDomain =
+    process.env.COOKIE_BASE_DOMAIN || process.env.NEXT_PUBLIC_BASE_DOMAIN;
+  const getCookieOptions = () => {
+    const secure = process.env.NODE_ENV === "production";
+    const options: any = {
+      httpOnly: true,
+      secure,
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/",
+    };
+    if (cookieBaseDomain && cookieBaseDomain.includes(".")) {
+      options.domain = `.${cookieBaseDomain}`;
+      // When we attach a domain-wide cookie, strict is safe for same-site subdomains; if issues arise in dev, fall back to lax.
+      options.sameSite = "strict";
+    }
+    return options;
+  };
   // Business owner login
   app.post("/api/auth/business/login", async (req, res) => {
     try {
@@ -60,12 +78,7 @@ export function registerAuthRoutes(app: Express) {
       }
 
       // Set secure HTTP-only cookie for refresh token
-      res.cookie("refreshToken", result.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
+      res.cookie("refreshToken", result.refreshToken, getCookieOptions());
 
       res.json({
         success: true,
@@ -108,12 +121,7 @@ export function registerAuthRoutes(app: Express) {
       }
 
       // Set secure HTTP-only cookie for refresh token
-      res.cookie("refreshToken", result.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
+      res.cookie("refreshToken", result.refreshToken, getCookieOptions());
 
       res.json({
         success: true,
@@ -162,12 +170,7 @@ export function registerAuthRoutes(app: Express) {
         });
       }
 
-      res.cookie("refreshToken", result.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie("refreshToken", result.refreshToken, getCookieOptions());
 
       return res.json({
         success: true,
@@ -257,18 +260,30 @@ export function registerAuthRoutes(app: Express) {
         });
       }
 
-      // Send verification email link (development: mailto URL response)
-      const verifyLink = createBusinessVerificationEmail({
-        email: data.ownerEmail,
-        businessName: data.businessName,
-        subdomain: data.subdomain,
-      } as any);
+      // Send a welcome email with subdomain and onboarding links. In dev, this will no-op if Mailtrap isn't configured.
+      try {
+        const { buildBusinessWelcomeEmail, sendEmail } = await import(
+          "./email-utils"
+        );
+        const { subject, html } = buildBusinessWelcomeEmail({
+          businessName: data.businessName,
+          subdomain: data.subdomain,
+        });
+        await sendEmail({ to: data.ownerEmail, subject, html });
+      } catch (e) {
+        // non-blocking
+      }
 
       res.status(201).json({
         success: true,
         message: result.message,
         business: result.business,
-        verifyLink,
+        // Keeping verifyLink for backwards-compat or local flows that still use mailto
+        verifyLink: createBusinessVerificationEmail({
+          email: data.ownerEmail,
+          businessName: data.businessName,
+          subdomain: data.subdomain,
+        } as any),
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -313,12 +328,7 @@ export function registerAuthRoutes(app: Express) {
 
       // If rotation issued a new refresh token, set it
       if (result.refreshToken) {
-        res.cookie("refreshToken", result.refreshToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "strict",
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        });
+        res.cookie("refreshToken", result.refreshToken, getCookieOptions());
       }
 
       res.json({
@@ -743,7 +753,7 @@ export function registerAuthRoutes(app: Express) {
         .set({ used: true, usedAt: new Date() })
         .where(eq(passwordResetRequests.id, reset.id));
 
-      res.clearCookie("refreshToken");
+      res.clearCookie("refreshToken", getCookieOptions());
 
       res.json({
         success: true,
@@ -770,7 +780,7 @@ export function registerAuthRoutes(app: Express) {
   app.post("/api/auth/logout", async (req, res) => {
     try {
       // Clear refresh token cookie
-      res.clearCookie("refreshToken");
+      res.clearCookie("refreshToken", getCookieOptions());
 
       // Revoke refresh token if provided
       const tokenFromCookie = req.cookies?.refreshToken;
@@ -927,7 +937,7 @@ export function registerAuthRoutes(app: Express) {
       await revokeAllUserTokens(req.user.userId, role, req.user.tenantId);
 
       // Clear cookie to force re-login
-      res.clearCookie("refreshToken");
+      res.clearCookie("refreshToken", getCookieOptions());
 
       res.json({
         success: true,

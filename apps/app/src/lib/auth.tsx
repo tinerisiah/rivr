@@ -93,13 +93,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const checkAuth = async () => {
       if (typeof window !== "undefined") {
-        const token = localStorage.getItem("accessToken");
+        let token = localStorage.getItem("accessToken");
+        // If no token in localStorage, attempt to hydrate from cookie (cross-subdomain support)
+        if (!token) {
+          try {
+            const cookieToken = document.cookie
+              .split(";")
+              .map((c) => c.trim())
+              .find((c) => c.startsWith("accessToken="));
+            if (cookieToken) {
+              token = decodeURIComponent(cookieToken.split("=")[1]);
+              if (token) {
+                localStorage.setItem("accessToken", token);
+              }
+            }
+          } catch {
+            // ignore cookie parsing errors
+          }
+        }
         if (token) {
           try {
             await refetchProfile();
           } catch (error) {
             // Token is invalid, clear it
             localStorage.removeItem("accessToken");
+            // Clear cookie as well
+            try {
+              const baseDomain = (
+                process.env.NEXT_PUBLIC_BASE_DOMAIN || ""
+              ).toLowerCase();
+              const expired =
+                "accessToken=; Path=/; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
+              document.cookie = expired;
+              if (baseDomain && baseDomain.includes(".")) {
+                document.cookie = `${expired}; Domain=.${baseDomain}`;
+              }
+            } catch {
+              // ignore cookie clear errors
+            }
+            setUser(null);
+          }
+        } else {
+          // No token in local storage or cookie; try refresh using HTTP-only cookie on API domain
+          try {
+            const refreshed = await refreshMutation.mutateAsync();
+            if (refreshed?.success && refreshed.accessToken) {
+              await refetchProfile();
+            } else {
+              setUser(null);
+            }
+          } catch {
             setUser(null);
           }
         }
@@ -158,6 +201,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data.user);
         if (typeof window !== "undefined") {
           localStorage.setItem("accessToken", data.accessToken);
+          // Set cookie on base domain for cross-subdomain auth persistence
+          try {
+            const baseDomain = (
+              process.env.NEXT_PUBLIC_BASE_DOMAIN || ""
+            ).toLowerCase();
+            const isSecure = window.location.protocol === "https:";
+            const tokenStr = encodeURIComponent(data.accessToken);
+            const cookie =
+              baseDomain && baseDomain.includes(".")
+                ? `accessToken=${tokenStr}; Path=/; Domain=.${baseDomain}; SameSite=Lax${isSecure ? "; Secure" : ""}`
+                : `accessToken=${tokenStr}; Path=/; SameSite=Lax${isSecure ? "; Secure" : ""}`;
+            document.cookie = cookie;
+          } catch {
+            // ignore cookie write errors
+          }
         }
         queryClient.invalidateQueries({ queryKey: ["auth"] });
         // Refetch profile to ensure we have the latest user data
@@ -196,6 +254,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.success && data.accessToken) {
         if (typeof window !== "undefined") {
           localStorage.setItem("accessToken", data.accessToken);
+          // Update cookie as well to keep in sync across subdomains
+          try {
+            const baseDomain = (
+              process.env.NEXT_PUBLIC_BASE_DOMAIN || ""
+            ).toLowerCase();
+            const isSecure = window.location.protocol === "https:";
+            const tokenStr = encodeURIComponent(data.accessToken);
+            const cookie =
+              baseDomain && baseDomain.includes(".")
+                ? `accessToken=${tokenStr}; Path=/; Domain=.${baseDomain}; SameSite=Lax${isSecure ? "; Secure" : ""}`
+                : `accessToken=${tokenStr}; Path=/; SameSite=Lax${isSecure ? "; Secure" : ""}`;
+            document.cookie = cookie;
+          } catch {
+            // ignore cookie write errors
+          }
         }
         queryClient.invalidateQueries({ queryKey: ["auth"] });
         // Refetch profile to ensure we have the latest user data
@@ -262,6 +335,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem("accessToken");
+      // Clear cookie on current host and base domain
+      try {
+        const baseDomain = (
+          process.env.NEXT_PUBLIC_BASE_DOMAIN || ""
+        ).toLowerCase();
+        const expired =
+          "accessToken=; Path=/; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = expired;
+        if (baseDomain && baseDomain.includes(".")) {
+          document.cookie = `${expired}; Domain=.${baseDomain}`;
+        }
+      } catch {
+        // ignore cookie clear errors
+      }
     }
     queryClient.clear();
   };

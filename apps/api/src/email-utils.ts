@@ -148,6 +148,64 @@ RIVR Team
   return `mailto:${params.email}?subject=${subject}&body=${body}`;
 }
 
+export function buildTenantUrl(subdomain: string, path: string = ""): string {
+  const baseDomain =
+    process.env.BASE_DOMAIN ||
+    process.env.NEXT_PUBLIC_BASE_DOMAIN ||
+    "localhost";
+  const isLocal =
+    baseDomain === "localhost" || baseDomain.endsWith(".localhost");
+  const protocol =
+    process.env.NODE_ENV === "production" && !isLocal ? "https" : "http";
+  const port = isLocal ? ":3000" : "";
+  const normalizedPath = path ? (path.startsWith("/") ? path : `/${path}`) : "";
+  if (isLocal) {
+    return `${protocol}://${subdomain}.localhost${port}${normalizedPath}`;
+  }
+  return `${protocol}://${subdomain}.${baseDomain}${normalizedPath}`;
+}
+
+export function buildBusinessWelcomeEmail(params: {
+  businessName: string;
+  subdomain: string;
+}): { subject: string; html: string } {
+  const portalUrl = buildTenantUrl(params.subdomain, "/auth");
+  const onboardingUrl = buildTenantUrl(params.subdomain, "/onboarding");
+  const subject = `Welcome to RIVR – Your business space is ready`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #0a0a0a;">
+      <h2>Welcome, ${params.businessName}!</h2>
+      <p>Your personal subdomain has been set up:</p>
+      <p style="font-size:16px; font-weight:600;">${params.subdomain}</p>
+      <p>You can access your portal here:</p>
+      <p><a href="${portalUrl}">${portalUrl}</a></p>
+      <p>To continue onboarding, visit:</p>
+      <p><a href="${onboardingUrl}">${onboardingUrl}</a></p>
+      <p style="margin-top:24px;">If you didn't request this, please ignore this email.</p>
+    </div>
+  `;
+  return { subject, html };
+}
+
+export function buildBusinessActivationEmail(params: {
+  businessName: string;
+  subdomain: string;
+}): { subject: string; html: string } {
+  const portalUrl = buildTenantUrl(params.subdomain, "/auth");
+  const subject = `Your RIVR account is active – Sign in to get started`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #0a0a0a;">
+      <h2>${params.businessName} is now active</h2>
+      <p>Your personal subdomain:</p>
+      <p style="font-size:16px; font-weight:600;">${params.subdomain}</p>
+      <p>Sign in to your portal:</p>
+      <p><a href="${portalUrl}">${portalUrl}</a></p>
+      <p style="margin-top:24px;">If you didn't request this, please ignore this email.</p>
+    </div>
+  `;
+  return { subject, html };
+}
+
 export function buildPasswordResetEmail(params: {
   toEmail: string;
   resetUrl: string;

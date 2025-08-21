@@ -327,7 +327,18 @@ export function BusinessesTab({
                       <div className="flex items-center space-x-2">
                         <MapPin className="w-4 h-4 text-muted-foreground" />
                         <span className="text-sm">
-                          {business.subdomain}.rivr.com
+                          <Link
+                            href={
+                              process.env.NODE_ENV === "development"
+                                ? `http://${business.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN}`
+                                : `https://${business.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN}`
+                            }
+                            target="_blank"
+                            className="hover:underline"
+                          >
+                            {business.subdomain}.
+                            {process.env.NEXT_PUBLIC_BASE_DOMAIN}
+                          </Link>
                         </span>
                       </div>
                       <div className="flex items-center space-x-2">

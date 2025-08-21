@@ -105,13 +105,14 @@ export const createServer = async (): Promise<Express> => {
   // Body parsing with security limits
   app.use(
     express.json({
-      limit: "10mb",
+      limit: "20mb",
       verify: (req, res, buf) => {
         // Allow empty bodies for GET requests and specific POST endpoints that don't require body data
         const allowedEmptyBodyPaths = [
           "/api/auth/logout",
           "/api/auth/health",
           "/api/auth/profile",
+          "/api/auth/refresh",
         ];
 
         // Allow empty bodies for GET requests (they typically don't have bodies)
@@ -131,7 +132,7 @@ export const createServer = async (): Promise<Express> => {
       },
     })
   );
-  app.use(express.urlencoded({ extended: false, limit: "10mb" }));
+  app.use(express.urlencoded({ extended: false, limit: "20mb" }));
 
   // Cookie parsing for authentication
   app.use(cookieParser());

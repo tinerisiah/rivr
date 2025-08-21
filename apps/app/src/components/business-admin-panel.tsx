@@ -16,6 +16,7 @@ export function BusinessAdminPanel() {
       customerLinkText="Customer Portal"
       customLogo={customLogo}
       onLogoChange={setCustomLogo}
+      allowEmployeeViewerManageProduction={true}
     />
   );
 }
