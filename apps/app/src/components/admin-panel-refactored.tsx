@@ -47,6 +47,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { ResetPasswordDialog } from "./admin/reset-password-dialog";
 import {
   Select,
   SelectItem,
@@ -171,6 +172,8 @@ export function AdminPanelRefactored({
     string | null
   >(null);
   const [showBusinessForm, setShowBusinessForm] = useState(false);
+  const [resetDriverDialogOpen, setResetDriverDialogOpen] = useState(false);
+  const [driverForReset, setDriverForReset] = useState<Driver | null>(null);
 
   // Load custom logo from localStorage
   useEffect(() => {
@@ -568,6 +571,34 @@ export function AdminPanelRefactored({
     },
   });
 
+  const resetDriverPasswordMutation = useMutation({
+    mutationFn: async (args: {
+      id: number;
+      newPassword: string;
+      confirmPassword: string;
+    }) => {
+      const response = await apiRequest(
+        "POST",
+        `/api/admin/drivers/${args.id}/reset-password`,
+        {
+          newPassword: args.newPassword,
+          confirmPassword: args.confirmPassword,
+        }
+      );
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Driver password reset" });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to reset driver password",
+        variant: "destructive",
+      });
+    },
+  });
+
   const updateBusinessStatusMutation = useMutation({
     mutationFn: async ({
       businessId,
@@ -791,6 +822,21 @@ export function AdminPanelRefactored({
   const handleEditDriverSubmit = (data: DriverFormData) => {
     if (selectedDriver) {
       updateDriverMutation.mutate({ ...data, id: selectedDriver.id });
+    }
+  };
+
+  const handleResetDriverPassword = async (driver: Driver) => {
+    setDriverForReset(driver);
+    setResetDriverDialogOpen(true);
+  };
+
+  const handleResetDriverSubmit = async (newPassword: string) => {
+    if (driverForReset) {
+      resetDriverPasswordMutation.mutate({
+        id: driverForReset.id,
+        newPassword,
+        confirmPassword: newPassword,
+      });
     }
   };
 
@@ -1019,6 +1065,7 @@ export function AdminPanelRefactored({
           onEditDriver={handleEditDriver}
           onDeleteDriver={handleDeleteDriver}
           onCopyLink={copyToClipboard}
+          onResetPassword={handleResetDriverPassword}
         />
       ),
     },
@@ -2085,6 +2132,18 @@ export function AdminPanelRefactored({
       {/* Welcome Animation */}
       {showWelcome && (
         <WelcomeAnimation onComplete={completeWelcome} userType="admin" />
+      )}
+
+      {/* Reset Driver Password Dialog */}
+      {driverForReset && (
+        <ResetPasswordDialog
+          open={resetDriverDialogOpen}
+          onOpenChange={setResetDriverDialogOpen}
+          onSubmit={handleResetDriverSubmit}
+          title="Reset Driver Password"
+          description="Enter a new password for this driver. The driver will receive an email with the new password."
+          userEmail={driverForReset.email}
+        />
       )}
     </div>
   );

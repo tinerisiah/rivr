@@ -800,6 +800,22 @@ class Storage {
     return business || null;
   }
 
+  // Permanently delete a business and platform-level related data
+  async deleteBusinessPlatformData(id: number): Promise<void> {
+    // Delete platform-level children first to satisfy FK constraints
+    await db
+      .delete(businessSettings)
+      .where(eq(businessSettings.businessId, id));
+    await db
+      .delete(businessEmployees)
+      .where(eq(businessEmployees.businessId, id));
+    await db
+      .delete(businessAnalytics)
+      .where(eq(businessAnalytics.businessId, id));
+    // Finally, delete the business record
+    await db.delete(businesses).where(eq(businesses.id, id));
+  }
+
   // Business settings operations
   async getBusinessSettings(
     businessId: number
@@ -877,9 +893,18 @@ class Storage {
     id: number,
     updates: Partial<InsertBusinessEmployee>
   ): Promise<BusinessEmployee | null> {
+    const nextUpdates: Partial<InsertBusinessEmployee> = { ...updates };
+    if (
+      typeof (nextUpdates as any).password === "string" &&
+      (nextUpdates as any).password!.trim().length > 0
+    ) {
+      (nextUpdates as any).password = await hashPassword(
+        (nextUpdates as any).password as unknown as string
+      );
+    }
     const [row] = await db
       .update(businessEmployees)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...(nextUpdates as any), updatedAt: new Date() })
       .where(eq(businessEmployees.id, id))
       .returning();
     return (row as BusinessEmployee) || null;

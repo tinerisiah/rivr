@@ -92,6 +92,69 @@ export default function RivrExecBusinessesPage() {
     },
   });
 
+  const resetOwnerPasswordMutation = useMutation({
+    mutationFn: async ({
+      businessId,
+      newPassword,
+      confirmPassword,
+    }: {
+      businessId: number;
+      newPassword: string;
+      confirmPassword: string;
+    }) => {
+      const data = await authenticatedApiRequest(
+        `/api/admin/businesses/${businessId}/reset-owner-password`,
+        {
+          method: "POST",
+          body: JSON.stringify({ newPassword, confirmPassword }),
+        }
+      );
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+      toast({
+        title: "Owner Password Reset",
+        description: "Business owner password has been reset successfully",
+        variant: "default",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to reset owner password",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteBusinessMutation = useMutation({
+    mutationFn: async (businessId: number) => {
+      const data = await authenticatedApiRequest(
+        `/api/admin/businesses/${businessId}`,
+        {
+          method: "DELETE",
+        }
+      );
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/businesses"] });
+      toast({
+        title: "Business Deleted",
+        description: "Business has been deleted successfully",
+        variant: "default",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete business",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleAddBusiness = () => setShowBusinessForm(true);
   const handleActivateBusiness = (businessId: number) =>
     updateBusinessStatusMutation.mutate({ businessId, status: "active" });
@@ -101,6 +164,22 @@ export default function RivrExecBusinessesPage() {
     updateBusinessStatusMutation.mutate({ businessId, status: "canceled" });
   const handleBusinessSubmit = (businessData: any) => {
     createBusinessMutation.mutate(businessData);
+  };
+
+  const handleResetOwnerPassword = async (
+    businessId: number,
+    newPassword: string
+  ) => {
+    resetOwnerPasswordMutation.mutate({
+      businessId,
+      newPassword,
+      confirmPassword: newPassword,
+    });
+  };
+
+  const handleDeleteBusiness = async (businessId: number) => {
+    deleteBusinessMutation.mutate(businessId);
+    return Promise.resolve();
   };
 
   return (
@@ -114,6 +193,8 @@ export default function RivrExecBusinessesPage() {
           onActivateBusiness={handleActivateBusiness}
           onSuspendBusiness={handleSuspendBusiness}
           onCancelBusiness={handleCancelBusiness}
+          onResetOwnerPassword={handleResetOwnerPassword}
+          onDeleteBusiness={handleDeleteBusiness}
         />
 
         <BusinessForm

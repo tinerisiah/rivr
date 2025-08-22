@@ -244,3 +244,9 @@ export async function provisionTenantSchema(schemaName: string): Promise<void> {
     );
   `);
 }
+
+// Drop a tenant schema and all its contained objects
+export async function dropTenantSchema(schemaName: string): Promise<void> {
+  // CASCADE will remove all tables, views, functions in the schema
+  await db.execute(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE;`);
+}

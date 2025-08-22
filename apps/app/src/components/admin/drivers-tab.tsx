@@ -2,8 +2,10 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { User, Plus, Edit, Copy } from "lucide-react";
+import { User, Plus, Edit, Copy, KeyRound } from "lucide-react";
 import type { Driver } from "@/lib/schema";
+import { ResetPasswordDialog } from "./reset-password-dialog";
+import { useState } from "react";
 
 interface DriversTabProps {
   drivers: Driver[];
@@ -13,6 +15,7 @@ interface DriversTabProps {
   onEditDriver: (driver: Driver) => void;
   onDeleteDriver: (driverId: number) => void;
   onCopyLink: (url: string) => void;
+  onResetPassword?: (driver: Driver) => Promise<void>;
 }
 
 export function DriversTab({
@@ -23,7 +26,22 @@ export function DriversTab({
   onEditDriver,
   onDeleteDriver,
   onCopyLink,
+  onResetPassword,
 }: DriversTabProps) {
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
+
+  const handleResetPassword = (driver: Driver) => {
+    setSelectedDriver(driver);
+    setResetDialogOpen(true);
+  };
+
+  const handleResetSubmit = async (newPassword: string) => {
+    if (selectedDriver && onResetPassword) {
+      await onResetPassword(selectedDriver);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -138,6 +156,17 @@ export function DriversTab({
                               <Edit className="w-3 h-3 mr-1" />
                               Edit
                             </Button>
+                            {onResetPassword && (
+                              <Button
+                                onClick={() => handleResetPassword(driver)}
+                                variant="outline"
+                                size="sm"
+                                className="border-amber-500 text-amber-600 hover:bg-amber-500 hover:text-white text-xs"
+                              >
+                                <KeyRound className="w-3 h-3 mr-1" />
+                                Reset
+                              </Button>
+                            )}
                             <Button
                               onClick={() => onDeleteDriver(driver.id)}
                               variant="outline"
@@ -171,6 +200,17 @@ export function DriversTab({
           </div>
         </div>
       </Card>
+
+      {onResetPassword && selectedDriver && (
+        <ResetPasswordDialog
+          open={resetDialogOpen}
+          onOpenChange={setResetDialogOpen}
+          onSubmit={handleResetSubmit}
+          title="Reset Driver Password"
+          description="Enter a new password for this driver. The driver will receive an email with the new password."
+          userEmail={selectedDriver.email}
+        />
+      )}
     </div>
   );
 }

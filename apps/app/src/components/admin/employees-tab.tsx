@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { KeyRound } from "lucide-react";
+import { ResetPasswordDialog } from "./reset-password-dialog";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +37,12 @@ type EmployeeFormData = z.infer<typeof employeeFormSchema>;
 export function EmployeesTab({ readOnly = false }: { readOnly?: boolean }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<{
+    id: number;
+    name: string;
+    email: string;
+  } | null>(null);
 
   const form = useForm<EmployeeFormData>({
     resolver: zodResolver(employeeFormSchema),
@@ -76,9 +84,46 @@ export function EmployeesTab({ readOnly = false }: { readOnly?: boolean }) {
     },
   });
 
+  const resetMutation = useMutation({
+    mutationFn: async (args: {
+      id: number;
+      newPassword: string;
+      confirmPassword: string;
+    }) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/admin/employees/${args.id}/reset-password`,
+        {
+          newPassword: args.newPassword,
+          confirmPassword: args.confirmPassword,
+        }
+      );
+      return res.json();
+    },
+  });
+
   const employees =
     (data?.employees as Array<{ id: number; name: string; email: string }>) ||
     [];
+
+  const handleResetPassword = (employee: {
+    id: number;
+    name: string;
+    email: string;
+  }) => {
+    setSelectedEmployee(employee);
+    setResetDialogOpen(true);
+  };
+
+  const handleResetSubmit = async (newPassword: string) => {
+    if (selectedEmployee) {
+      await resetMutation.mutateAsync({
+        id: selectedEmployee.id,
+        newPassword,
+        confirmPassword: newPassword,
+      });
+    }
+  };
 
   return (
     <Card className="bg-card border border-border p-4 sm:p-6 shadow-sm">
@@ -112,17 +157,27 @@ export function EmployeesTab({ readOnly = false }: { readOnly?: boolean }) {
                 <div className="text-sm text-muted-foreground">{emp.email}</div>
               </div>
               {!readOnly && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-                  onClick={async () => {
-                    await deleteMutation.mutateAsync(emp.id);
-                    toast({ title: "Employee Deleted" });
-                  }}
-                >
-                  Delete
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-amber-500 text-amber-600 hover:bg-amber-500 hover:text-white"
+                    onClick={() => handleResetPassword(emp)}
+                  >
+                    <KeyRound className="w-3 h-3 mr-1" /> Reset
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+                    onClick={async () => {
+                      await deleteMutation.mutateAsync(emp.id);
+                      toast({ title: "Employee Deleted" });
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
               )}
             </div>
           ))}
@@ -197,6 +252,17 @@ export function EmployeesTab({ readOnly = false }: { readOnly?: boolean }) {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {selectedEmployee && (
+        <ResetPasswordDialog
+          open={resetDialogOpen}
+          onOpenChange={setResetDialogOpen}
+          onSubmit={handleResetSubmit}
+          title="Reset Employee Password"
+          description="Enter a new password for this employee. The employee will receive an email with the new password."
+          userEmail={selectedEmployee.email}
+        />
+      )}
     </Card>
   );
 }

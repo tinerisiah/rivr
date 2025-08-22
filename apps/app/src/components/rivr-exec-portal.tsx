@@ -176,6 +176,36 @@ export function RivrExecPortal() {
     },
   });
 
+  const deleteBusinessMutation = useMutation({
+    mutationFn: async (businessId: number) => {
+      const data = await authenticatedApiRequest(
+        `/api/admin/businesses/${businessId}`,
+        {
+          method: "DELETE",
+        }
+      );
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/businesses"],
+        refetchType: "active",
+      });
+      toast({
+        title: "Business Deleted",
+        description: "Business deleted successfully",
+        variant: "default",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete business",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Executive Analytics Functions
   const calculateRevenue = () => {
     const completedRequests = requests.filter(
@@ -298,6 +328,10 @@ export function RivrExecPortal() {
 
   const handleBusinessSubmit = (businessData: any) => {
     createBusinessMutation.mutate(businessData);
+  };
+
+  const handleDeleteBusiness = async (businessId: number) => {
+    await deleteBusinessMutation.mutateAsync(businessId);
   };
 
   // Filter and sort customers for CRM functionality
@@ -747,6 +781,7 @@ export function RivrExecPortal() {
                 onActivateBusiness={handleActivateBusiness}
                 onSuspendBusiness={handleSuspendBusiness}
                 onCancelBusiness={handleCancelBusiness}
+                onDeleteBusiness={handleDeleteBusiness}
               />
             </TabsContent>
 

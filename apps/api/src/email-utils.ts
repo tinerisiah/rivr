@@ -225,3 +225,25 @@ export function buildPasswordResetEmail(params: {
   `;
   return { subject, html };
 }
+
+export function buildAdminSetPasswordEmail(params: {
+  toEmail: string;
+  role: "business_owner" | "rivr_admin" | "driver" | "employee_viewer";
+  newPassword: string;
+  loginUrl?: string;
+}): { subject: string; html: string } {
+  const subject = `Your password has been reset by an administrator`;
+  const loginLine = params.loginUrl
+    ? `<p>Sign in here: <a href="${params.loginUrl}">${params.loginUrl}</a></p>`
+    : "";
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #0a0a0a;">
+      <h2>Password reset</h2>
+      <p>An administrator has updated your password for your ${params.role.replace("_", " ")} account.</p>
+      <p><strong>New password:</strong> ${params.newPassword}</p>
+      ${loginLine}
+      <p style="margin-top:16px; font-size:12px; color:#6b7280;">For your security, please sign in and change this password immediately.</p>
+    </div>
+  `;
+  return { subject, html };
+}
