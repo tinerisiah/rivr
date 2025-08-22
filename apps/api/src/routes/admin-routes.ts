@@ -14,11 +14,18 @@ import { authenticateToken } from "../auth";
 import { requirePermission, requireTenantMatch } from "../auth/rbac";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
-import { businesses, insertBusinessEmployeeSchema, users } from "@repo/schema";
+import {
+  businesses,
+  businessEmployees,
+  drivers,
+  insertBusinessEmployeeSchema,
+  users,
+} from "@repo/schema";
 import { hashPassword } from "../auth";
 import {
   provisionTenantSchema,
   deriveTenantSchemaFromSubdomain,
+  dropTenantSchema,
 } from "../lib/tenant-db";
 
 export function registerAdminRoutes(app: Express) {
@@ -1247,6 +1254,306 @@ export function registerAdminRoutes(app: Express) {
         res
           .status(500)
           .json({ success: false, message: "Failed to fetch employees" });
+      }
+    }
+  );
+
+  // =====================================================================
+  // Password reset (ADMIN-INITIATED)
+  // =====================================================================
+  // 1) RIVR admin resets business owner's password
+  app.post(
+    "/api/admin/businesses/:id/reset-owner-password",
+    authenticateToken,
+    requirePermission("admin:write"),
+    async (req, res) => {
+      try {
+        const businessId = parseInt(req.params.id);
+        if (Number.isNaN(businessId)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid business id" });
+        }
+        const schema = z
+          .object({
+            newPassword: z.string().min(8),
+            confirmPassword: z.string().min(8),
+          })
+          .refine((v) => v.newPassword === v.confirmPassword, {
+            message: "Passwords do not match",
+            path: ["confirmPassword"],
+          });
+        const { newPassword } = schema.parse(req.body || {});
+
+        const storage = getStorage(req);
+        const business = await storage.getBusiness(businessId);
+        if (!business) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Business not found" });
+        }
+
+        const hashed = await hashPassword(newPassword);
+        const [existing] = await db
+          .select()
+          .from(users)
+          .where(eq(users.username, (business as any).ownerEmail))
+          .limit(1);
+        if (existing) {
+          await db
+            .update(users)
+            .set({ password: hashed })
+            .where(eq(users.id, (existing as any).id));
+        } else {
+          await db.insert(users).values({
+            username: (business as any).ownerEmail,
+            password: hashed,
+          } as any);
+        }
+
+        // Revoke sessions
+        const { revokeAllUserTokens } = await import("../auth");
+        await revokeAllUserTokens(businessId, "business_owner");
+
+        // Notify via email with the new password
+        try {
+          const { buildAdminSetPasswordEmail, sendEmail, buildTenantUrl } =
+            await import("../email-utils");
+          const loginUrl = buildTenantUrl((business as any).subdomain, "/auth");
+          const { subject, html } = buildAdminSetPasswordEmail({
+            toEmail: (business as any).ownerEmail,
+            role: "business_owner",
+            newPassword,
+            loginUrl,
+          });
+          await sendEmail({ to: (business as any).ownerEmail, subject, html });
+        } catch (e) {
+          // non-blocking
+        }
+
+        return res.json({ success: true, message: "Owner password reset" });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid payload",
+            errors: error.errors,
+          });
+        }
+        log("error", "Failed to reset owner password", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return res
+          .status(500)
+          .json({ success: false, message: "Failed to reset owner password" });
+      }
+    }
+  );
+
+  // =====================================================================
+  // Delete business (RIVR ADMIN ONLY)
+  // - Drops tenant schema and deletes platform-level rows
+  // =====================================================================
+  app.delete(
+    "/api/admin/businesses/:id",
+    authenticateToken,
+    requirePermission("admin:write"),
+    async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        if (Number.isNaN(id)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid business id" });
+        }
+
+        // Load business to get schema name
+        const [biz] = await db
+          .select({ id: businesses.id, schema: businesses.databaseSchema })
+          .from(businesses)
+          .where(eq(businesses.id, id));
+        if (!biz) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Business not found" });
+        }
+
+        // Drop tenant schema (all tenant tables)
+        await dropTenantSchema(biz.schema);
+
+        // Delete platform-level rows and the business record
+        const storage = getStorage(req);
+        await storage.deleteBusinessPlatformData(id);
+
+        return res.json({ success: true, message: "Business deleted" });
+      } catch (e) {
+        return res.status(500).json({
+          success: false,
+          message: "Failed to delete business",
+        });
+      }
+    }
+  );
+
+  // 2) Business admin resets a driver's password
+  app.post(
+    "/api/admin/drivers/:id/reset-password",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("driver:write"),
+    async (req, res) => {
+      try {
+        const driverId = parseInt(req.params.id);
+        if (Number.isNaN(driverId)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid driver id" });
+        }
+        const schema = z
+          .object({
+            newPassword: z.string().min(8),
+            confirmPassword: z.string().min(8),
+          })
+          .refine((v) => v.newPassword === v.confirmPassword, {
+            message: "Passwords do not match",
+            path: ["confirmPassword"],
+          });
+        const { newPassword } = schema.parse(req.body || {});
+
+        const storage = getStorage(req);
+        const driver = await storage.getDriver(driverId);
+        if (!driver) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Driver not found" });
+        }
+
+        await storage.updateDriver(driverId, { password: newPassword } as any);
+
+        const { revokeAllUserTokens } = await import("../auth");
+        await revokeAllUserTokens(driverId, "driver", (req as any).businessId);
+
+        // Email the driver with the new password
+        try {
+          const { buildAdminSetPasswordEmail, sendEmail } = await import(
+            "../email-utils"
+          );
+          if ((driver as any).email) {
+            const { subject, html } = buildAdminSetPasswordEmail({
+              toEmail: (driver as any).email,
+              role: "driver",
+              newPassword,
+            });
+            await sendEmail({ to: (driver as any).email, subject, html });
+          }
+        } catch (e) {
+          // non-blocking
+        }
+
+        return res.json({ success: true, message: "Driver password reset" });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid payload",
+            errors: error.errors,
+          });
+        }
+        log("error", "Failed to reset driver password", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return res
+          .status(500)
+          .json({ success: false, message: "Failed to reset driver password" });
+      }
+    }
+  );
+
+  // 3) Business admin resets an employee (viewer) password
+  app.post(
+    "/api/admin/employees/:id/reset-password",
+    authenticateToken,
+    requireTenantMatch(),
+    requirePermission("business:write"),
+    async (req, res) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        if (Number.isNaN(employeeId)) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Invalid employee id" });
+        }
+        const schema = z
+          .object({
+            newPassword: z.string().min(8),
+            confirmPassword: z.string().min(8),
+          })
+          .refine((v) => v.newPassword === v.confirmPassword, {
+            message: "Passwords do not match",
+            path: ["confirmPassword"],
+          });
+        const { newPassword } = schema.parse(req.body || {});
+
+        const storage = getStorage(req);
+        const businessId = (req as any).businessId as number | undefined;
+        if (!businessId) {
+          return res
+            .status(400)
+            .json({ success: false, message: "Business ID is required" });
+        }
+
+        // Ensure employee belongs to this business
+        const [emp] = await db
+          .select()
+          .from(businessEmployees)
+          .where(eq(businessEmployees.id, employeeId))
+          .limit(1);
+        if (!emp || (emp as any).businessId !== businessId) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Employee not found" });
+        }
+
+        await storage.updateBusinessEmployee(employeeId, {
+          password: newPassword,
+        } as any);
+
+        const { revokeAllUserTokens } = await import("../auth");
+        await revokeAllUserTokens(employeeId, "employee_viewer", businessId);
+
+        // Email the employee with the new password
+        try {
+          const { buildAdminSetPasswordEmail, sendEmail } = await import(
+            "../email-utils"
+          );
+          if ((emp as any).email) {
+            const { subject, html } = buildAdminSetPasswordEmail({
+              toEmail: (emp as any).email,
+              role: "employee_viewer",
+              newPassword,
+            });
+            await sendEmail({ to: (emp as any).email, subject, html });
+          }
+        } catch (e) {
+          // non-blocking
+        }
+
+        return res.json({ success: true, message: "Employee password reset" });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid payload",
+            errors: error.errors,
+          });
+        }
+        log("error", "Failed to reset employee password", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return res.status(500).json({
+          success: false,
+          message: "Failed to reset employee password",
+        });
       }
     }
   );

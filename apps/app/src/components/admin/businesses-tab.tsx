@@ -18,7 +18,10 @@ import {
   Clock,
   AlertTriangle,
   XCircle,
+  KeyRound,
+  Trash2,
 } from "lucide-react";
+import { ResetPasswordDialog } from "./reset-password-dialog";
 import Link from "next/link";
 
 interface Business {
@@ -58,6 +61,11 @@ interface BusinessesTabProps {
   onActivateBusiness: (businessId: number) => void;
   onSuspendBusiness: (businessId: number) => void;
   onCancelBusiness: (businessId: number) => void;
+  onResetOwnerPassword?: (
+    businessId: number,
+    newPassword: string
+  ) => Promise<void>;
+  onDeleteBusiness?: (businessId: number) => Promise<void>;
 }
 
 export function BusinessesTab({
@@ -67,8 +75,14 @@ export function BusinessesTab({
   onActivateBusiness,
   onSuspendBusiness,
   onCancelBusiness,
+  onResetOwnerPassword,
+  onDeleteBusiness,
 }: BusinessesTabProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(
+    null
+  );
 
   const filteredBusinesses = businesses.filter(
     (business) =>
@@ -76,6 +90,30 @@ export function BusinessesTab({
       business.ownerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
       business.subdomain.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleResetOwnerPassword = (business: Business) => {
+    setSelectedBusiness(business);
+    setResetDialogOpen(true);
+  };
+
+  const handleResetSubmit = async (newPassword: string) => {
+    if (selectedBusiness && onResetOwnerPassword) {
+      // Call the parent handler with the business ID and new password
+      await onResetOwnerPassword(selectedBusiness.id, newPassword);
+    }
+  };
+
+  const handleDeleteBusiness = async (businessId: number) => {
+    if (
+      confirm(
+        "Are you sure you want to delete this business? This action cannot be undone."
+      )
+    ) {
+      if (onDeleteBusiness) {
+        await onDeleteBusiness(businessId);
+      }
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -419,6 +457,30 @@ export function BusinessesTab({
                     >
                       Cancel
                     </Button>
+                    {onResetOwnerPassword && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleResetOwnerPassword(business)}
+                        className="border-amber-500 text-amber-600 hover:bg-amber-500 hover:text-white"
+                        title="Reset business owner password"
+                      >
+                        <KeyRound className="w-3 h-3 mr-1" />
+                        Reset
+                      </Button>
+                    )}
+                    {onDeleteBusiness && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDeleteBusiness(business.id)}
+                        className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+                        title="Delete business"
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        Delete
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -426,6 +488,18 @@ export function BusinessesTab({
           ))
         )}
       </div>
+
+      {/* Reset Owner Password Dialog */}
+      {onResetOwnerPassword && selectedBusiness && (
+        <ResetPasswordDialog
+          open={resetDialogOpen}
+          onOpenChange={setResetDialogOpen}
+          onSubmit={handleResetSubmit}
+          title="Reset Business Owner Password"
+          description="Enter a new password for the business owner. The owner will receive an email with the new password."
+          userEmail={selectedBusiness.ownerEmail}
+        />
+      )}
     </div>
   );
 }

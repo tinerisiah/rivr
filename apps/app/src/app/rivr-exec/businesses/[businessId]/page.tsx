@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AdminProtectedRoute } from "@/components/auth/protected-route";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,14 +9,16 @@ import { authenticatedApiRequest } from "@/lib/api";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { CheckCircle, Database, Radio } from "lucide-react";
+import { CheckCircle, Database, Radio, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { ResetPasswordDialog } from "@/components/admin/reset-password-dialog";
 
 export default function RivrExecBusinessDetailPage() {
   const params = useParams<{ businessId: string }>();
   const businessId = Number(params.businessId);
   const { toast } = useToast();
+  const [resetOwnerDialogOpen, setResetOwnerDialogOpen] = useState(false);
 
   const { data: businessesData, isLoading: loadingBusinesses } = useQuery({
     queryKey: ["/api/admin/businesses"],
@@ -78,6 +80,35 @@ export default function RivrExecBusinessDetailPage() {
     },
   });
 
+  const resetOwnerPasswordMutation = useMutation({
+    mutationFn: async ({
+      newPassword,
+      confirmPassword,
+    }: {
+      newPassword: string;
+      confirmPassword: string;
+    }) => {
+      const data = await authenticatedApiRequest(
+        `/api/admin/businesses/${businessId}/reset-owner-password`,
+        {
+          method: "POST",
+          body: JSON.stringify({ newPassword, confirmPassword }),
+        }
+      );
+      return data;
+    },
+    onSuccess: () => {
+      toast({ title: "Owner password reset" });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to reset owner password",
+        variant: "destructive",
+      });
+    },
+  });
+
   const statusBadge = (status?: string) => {
     switch (status) {
       case "active":
@@ -93,6 +124,17 @@ export default function RivrExecBusinessDetailPage() {
       default:
         return status ? <Badge variant="secondary">{status}</Badge> : null;
     }
+  };
+
+  const handleResetOwnerPassword = () => {
+    setResetOwnerDialogOpen(true);
+  };
+
+  const handleResetOwnerSubmit = async (newPassword: string) => {
+    resetOwnerPasswordMutation.mutate({
+      newPassword,
+      confirmPassword: newPassword,
+    });
   };
 
   return (
@@ -121,6 +163,14 @@ export default function RivrExecBusinessDetailPage() {
             <Link href="/rivr-exec/reports">
               <Button variant="outline">Reports</Button>
             </Link>
+            <Button
+              variant="outline"
+              onClick={handleResetOwnerPassword}
+              className="border-amber-200 text-amber-700 hover:bg-amber-50"
+              title="Reset business owner password"
+            >
+              <KeyRound className="w-4 h-4 mr-1" /> Reset Owner Password
+            </Button>
             {business?.status === "pending" && (
               <Button
                 onClick={() =>
@@ -193,7 +243,9 @@ export default function RivrExecBusinessDetailPage() {
             <div className="text-sm space-y-1 text-muted-foreground">
               <div>
                 <span className="font-medium text-foreground">Subdomain: </span>
-                {business?.subdomain ? `${business.subdomain}.rivr.com` : "-"}
+                {business?.subdomain
+                  ? `${business.subdomain}.${process.env.NEXT_PUBLIC_BASE_DOMAIN}`
+                  : "-"}
               </div>
               <div>
                 <span className="font-medium text-foreground">Owner: </span>
@@ -317,6 +369,16 @@ export default function RivrExecBusinessDetailPage() {
           )}
         </Card>
       </div>
+
+      {/* Reset Owner Password Dialog */}
+      <ResetPasswordDialog
+        open={resetOwnerDialogOpen}
+        onOpenChange={setResetOwnerDialogOpen}
+        onSubmit={handleResetOwnerSubmit}
+        title="Reset Business Owner Password"
+        description="Enter a new password for the business owner. The owner will receive an email with the new password."
+        userEmail={business?.ownerEmail}
+      />
     </AdminProtectedRoute>
   );
 }
