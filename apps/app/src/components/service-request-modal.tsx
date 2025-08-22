@@ -343,7 +343,7 @@ export default function ServiceRequestModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-xl w-full mobile-modal-full overscroll-none">
+      <DialogContent className="max-w-xl w-full mobile-modal-full max-h-[calc(100vh-100px)] overflow-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold tracking-wide">
             Service Request
